@@ -3,99 +3,338 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Simple ToDo</title>
+    <title>ToDo MVP</title>
     <style>
-      body {
-        font-family: Arial, sans-serif;
-        max-width: 600px;
-        margin: 2rem auto;
-        padding: 0 1rem;
+      :root {
+        --border: #e5e7eb;
+        --text: #111827;
+        --muted: #6b7280;
+        --accent: #2563eb;
       }
-      h1 {
-        margin-bottom: 1rem;
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        max-width: 980px;
+        margin: 24px auto;
+        color: var(--text);
+        padding: 0 16px;
+        background: #fff;
+      }
+      h1, h2 { margin: 8px 0 16px; }
+      .card {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 16px;
       }
       .row {
         display: flex;
-        gap: 0.5rem;
+        gap: 8px;
+        flex-wrap: wrap;
       }
-      input {
-        flex: 1;
-        padding: 0.5rem;
+      input, select, button {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-size: 14px;
       }
-      button {
-        padding: 0.5rem 0.75rem;
-        cursor: pointer;
-      }
-      li {
-        margin: 0.5rem 0;
-      }
-      #error {
-        color: #b00020;
-      }
+      input, select { background: #fff; }
+      button { cursor: pointer; background: #f9fafb; }
+      button.primary { background: var(--accent); color: white; border-color: var(--accent); }
+      .grow { flex: 1; min-width: 160px; }
+      .muted { color: var(--muted); font-size: 12px; }
+      .error { color: #b91c1c; }
+      table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+      th, td { border-top: 1px solid var(--border); padding: 10px 8px; text-align: left; vertical-align: top; }
+      .chip { display: inline-block; padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; margin-right: 4px; font-size: 12px; }
+      .done { text-decoration: line-through; color: var(--muted); }
+      .hidden { display: none; }
     </style>
   </head>
   <body>
-    <h1>ToDoアプリ</h1>
+    <h1>ToDoアプリ（MVP）</h1>
 
-    <div class="row">
-      <input id="todoInput" type="text" placeholder="やることを入力" />
-      <button id="addButton">追加</button>
-    </div>
+    <section id="loginCard" class="card">
+      <h2>ログイン</h2>
+      <div class="row">
+        <input id="username" value="admin" placeholder="ID" />
+        <input id="password" value="password" type="password" placeholder="パスワード" />
+        <button id="loginBtn" class="primary">ログイン</button>
+      </div>
+      <p class="muted">デフォルト: admin / password</p>
+      <p id="loginError" class="error"></p>
+    </section>
 
-    <p id="error"></p>
-    <ul id="todoList"></ul>
+    <section id="appSection" class="hidden">
+      <div class="card">
+        <div class="row" style="justify-content: space-between; align-items: center">
+          <h2 style="margin: 0">タスク管理</h2>
+          <div>
+            <span id="me" class="muted"></span>
+            <button id="logoutBtn">ログアウト</button>
+          </div>
+        </div>
+      </div>
+
+      <section class="card">
+        <h2>新規ToDo</h2>
+        <div class="row">
+          <input id="title" class="grow" placeholder="タイトル" />
+          <input id="dueDate" type="date" />
+          <select id="priority">
+            <option value="1">高</option>
+            <option value="2" selected>中</option>
+            <option value="3">低</option>
+          </select>
+          <input id="tags" class="grow" placeholder="タグ（カンマ区切り）" />
+          <button id="createBtn" class="primary">追加</button>
+        </div>
+        <p id="createError" class="error"></p>
+      </section>
+
+      <section class="card">
+        <h2>検索・絞り込み</h2>
+        <div class="row">
+          <input id="q" class="grow" placeholder="キーワード検索" />
+          <select id="status">
+            <option value="all">すべて</option>
+            <option value="active">未完了</option>
+            <option value="completed">完了</option>
+          </select>
+          <select id="sortBy">
+            <option value="created_at">作成日</option>
+            <option value="due_date">期限日</option>
+            <option value="priority">優先度</option>
+          </select>
+          <select id="order">
+            <option value="desc">降順</option>
+            <option value="asc">昇順</option>
+          </select>
+          <select id="pageSize">
+            <option value="5">5件</option>
+            <option value="10" selected>10件</option>
+            <option value="20">20件</option>
+          </select>
+          <button id="searchBtn">適用</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <table>
+          <thead>
+            <tr>
+              <th>状態</th>
+              <th>タイトル</th>
+              <th>期限</th>
+              <th>優先度</th>
+              <th>タグ</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="todoBody"></tbody>
+        </table>
+        <div class="row" style="margin-top: 12px; justify-content: space-between;">
+          <button id="prevBtn">前へ</button>
+          <span id="pageInfo" class="muted"></span>
+          <button id="nextBtn">次へ</button>
+        </div>
+      </section>
+    </section>
 
     <script>
-      const todoInput = document.getElementById('todoInput');
-      const addButton = document.getElementById('addButton');
-      const todoList = document.getElementById('todoList');
-      const errorText = document.getElementById('error');
+      const state = {
+        token: localStorage.getItem('token') || '',
+        page: 1,
+        totalPages: 1,
+      };
 
-      async function fetchTodos() {
-        const res = await fetch('/api/todos');
-        const todos = await res.json();
+      const loginCard = document.getElementById('loginCard');
+      const appSection = document.getElementById('appSection');
+      const loginError = document.getElementById('loginError');
+      const createError = document.getElementById('createError');
+      const todoBody = document.getElementById('todoBody');
+      const pageInfo = document.getElementById('pageInfo');
+      const me = document.getElementById('me');
 
-        todoList.innerHTML = '';
-        for (const todo of todos) {
-          const li = document.createElement('li');
-          li.textContent = `${todo.id}. ${todo.title}`;
-          todoList.appendChild(li);
+      async function api(path, options = {}) {
+        const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+        if (state.token) headers.Authorization = `Bearer ${state.token}`;
+        const res = await fetch(path, { ...options, headers });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || 'APIエラー');
+        return data;
+      }
+
+      function priorityLabel(v) {
+        if (v === 1) return '高';
+        if (v === 2) return '中';
+        return '低';
+      }
+
+      function getFilters() {
+        return {
+          q: document.getElementById('q').value,
+          status: document.getElementById('status').value,
+          sort_by: document.getElementById('sortBy').value,
+          order: document.getElementById('order').value,
+          page: state.page,
+          page_size: Number(document.getElementById('pageSize').value),
+        };
+      }
+
+      function toQuery(obj) {
+        const sp = new URLSearchParams();
+        Object.entries(obj).forEach(([k, v]) => sp.set(k, v));
+        return sp.toString();
+      }
+
+      async function loadMe() {
+        const data = await api('/api/me', { method: 'GET' });
+        me.textContent = `ログイン中: ${data.username}`;
+      }
+
+      async function loadTodos() {
+        const query = toQuery(getFilters());
+        const data = await api(`/api/todos?${query}`);
+        todoBody.innerHTML = '';
+
+        for (const todo of data.items) {
+          const tr = document.createElement('tr');
+          const tags = (todo.tags || []).map(t => `<span class="chip">${t}</span>`).join('');
+          tr.innerHTML = `
+            <td>${todo.completed ? '✅' : '⬜'}</td>
+            <td class="${todo.completed ? 'done' : ''}">${todo.title}</td>
+            <td>${todo.due_date || '-'}</td>
+            <td>${priorityLabel(todo.priority)}</td>
+            <td>${tags || '-'}</td>
+            <td>
+              <button data-action="toggle" data-id="${todo.id}">切替</button>
+              <button data-action="edit" data-id="${todo.id}">編集</button>
+              <button data-action="delete" data-id="${todo.id}">削除</button>
+            </td>
+          `;
+          todoBody.appendChild(tr);
+        }
+
+        state.page = data.pagination.page;
+        state.totalPages = data.pagination.total_pages;
+        pageInfo.textContent = `${data.pagination.page} / ${data.pagination.total_pages} (全${data.pagination.total}件)`;
+      }
+
+      function showApp(isLoggedIn) {
+        loginCard.classList.toggle('hidden', isLoggedIn);
+        appSection.classList.toggle('hidden', !isLoggedIn);
+      }
+
+      async function tryAutoLogin() {
+        if (!state.token) {
+          showApp(false);
+          return;
+        }
+        try {
+          await loadMe();
+          showApp(true);
+          await loadTodos();
+        } catch {
+          state.token = '';
+          localStorage.removeItem('token');
+          showApp(false);
         }
       }
 
-      async function addTodo() {
-        errorText.textContent = '';
-        const title = todoInput.value.trim();
-
-        if (!title) {
-          errorText.textContent = '入力してください';
-          return;
-        }
-
-        const res = await fetch('/api/todos', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title }),
-        });
-
-        if (!res.ok) {
-          const data = await res.json();
-          errorText.textContent = data.detail || 'エラーが発生しました';
-          return;
-        }
-
-        todoInput.value = '';
-        await fetchTodos();
-      }
-
-      addButton.addEventListener('click', addTodo);
-      todoInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          addTodo();
+      document.getElementById('loginBtn').addEventListener('click', async () => {
+        loginError.textContent = '';
+        try {
+          const username = document.getElementById('username').value;
+          const password = document.getElementById('password').value;
+          const data = await api('/api/login', {
+            method: 'POST',
+            body: JSON.stringify({ username, password }),
+          });
+          state.token = data.token;
+          localStorage.setItem('token', data.token);
+          await loadMe();
+          showApp(true);
+          state.page = 1;
+          await loadTodos();
+        } catch (e) {
+          loginError.textContent = e.message;
         }
       });
 
-      fetchTodos();
+      document.getElementById('logoutBtn').addEventListener('click', () => {
+        state.token = '';
+        localStorage.removeItem('token');
+        showApp(false);
+      });
+
+      document.getElementById('createBtn').addEventListener('click', async () => {
+        createError.textContent = '';
+        try {
+          const payload = {
+            title: document.getElementById('title').value,
+            due_date: document.getElementById('dueDate').value || null,
+            priority: Number(document.getElementById('priority').value),
+            tags: document.getElementById('tags').value,
+          };
+          await api('/api/todos', { method: 'POST', body: JSON.stringify(payload) });
+          document.getElementById('title').value = '';
+          document.getElementById('tags').value = '';
+          state.page = 1;
+          await loadTodos();
+        } catch (e) {
+          createError.textContent = e.message;
+        }
+      });
+
+      document.getElementById('searchBtn').addEventListener('click', async () => {
+        state.page = 1;
+        await loadTodos();
+      });
+
+      document.getElementById('prevBtn').addEventListener('click', async () => {
+        if (state.page <= 1) return;
+        state.page -= 1;
+        await loadTodos();
+      });
+
+      document.getElementById('nextBtn').addEventListener('click', async () => {
+        if (state.page >= state.totalPages) return;
+        state.page += 1;
+        await loadTodos();
+      });
+
+      todoBody.addEventListener('click', async (e) => {
+        const btn = e.target.closest('button');
+        if (!btn) return;
+
+        const id = btn.dataset.id;
+        const action = btn.dataset.action;
+
+        if (action === 'toggle') {
+          await api(`/api/todos/${id}/toggle`, { method: 'PATCH' });
+          await loadTodos();
+          return;
+        }
+
+        if (action === 'delete') {
+          if (!confirm('削除しますか？')) return;
+          await api(`/api/todos/${id}`, { method: 'DELETE' });
+          await loadTodos();
+          return;
+        }
+
+        if (action === 'edit') {
+          const title = prompt('新しいタイトルを入力してください');
+          if (title === null) return;
+          await api(`/api/todos/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ title }),
+          });
+          await loadTodos();
+        }
+      });
+
+      tryAutoLogin();
     </script>
   </body>
 </html>

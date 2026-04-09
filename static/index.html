@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Simple ToDo</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 600px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+      h1 {
+        margin-bottom: 1rem;
+      }
+      .row {
+        display: flex;
+        gap: 0.5rem;
+      }
+      input {
+        flex: 1;
+        padding: 0.5rem;
+      }
+      button {
+        padding: 0.5rem 0.75rem;
+        cursor: pointer;
+      }
+      li {
+        margin: 0.5rem 0;
+      }
+      #error {
+        color: #b00020;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>ToDoアプリ</h1>
+
+    <div class="row">
+      <input id="todoInput" type="text" placeholder="やることを入力" />
+      <button id="addButton">追加</button>
+    </div>
+
+    <p id="error"></p>
+    <ul id="todoList"></ul>
+
+    <script>
+      const todoInput = document.getElementById('todoInput');
+      const addButton = document.getElementById('addButton');
+      const todoList = document.getElementById('todoList');
+      const errorText = document.getElementById('error');
+
+      async function fetchTodos() {
+        const res = await fetch('/api/todos');
+        const todos = await res.json();
+
+        todoList.innerHTML = '';
+        for (const todo of todos) {
+          const li = document.createElement('li');
+          li.textContent = `${todo.id}. ${todo.title}`;
+          todoList.appendChild(li);
+        }
+      }
+
+      async function addTodo() {
+        errorText.textContent = '';
+        const title = todoInput.value.trim();
+
+        if (!title) {
+          errorText.textContent = '入力してください';
+          return;
+        }
+
+        const res = await fetch('/api/todos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title }),
+        });
+
+        if (!res.ok) {
+          const data = await res.json();
+          errorText.textContent = data.detail || 'エラーが発生しました';
+          return;
+        }
+
+        todoInput.value = '';
+        await fetchTodos();
+      }
+
+      addButton.addEventListener('click', addTodo);
+      todoInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          addTodo();
+        }
+      });
+
+      fetchTodos();
+    </script>
+  </body>
+</html>

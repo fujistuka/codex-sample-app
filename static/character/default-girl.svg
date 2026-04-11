@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="48" fill="#eef6ff"/>
+  <circle cx="256" cy="220" r="120" fill="#ffd7e5"/>
+  <circle cx="208" cy="210" r="16" fill="#3a3a3a"/>
+  <circle cx="304" cy="210" r="16" fill="#3a3a3a"/>
+  <path d="M200 278c18 22 42 34 56 34s38-12 56-34" stroke="#3a3a3a" stroke-width="10" fill="none" stroke-linecap="round"/>
+  <path d="M136 150c20-78 220-96 248 8 16 58-12 98-20 106-10-34-22-54-64-72-46-18-108-18-160 16z" fill="#9e7bdc"/>
+  <text x="256" y="430" text-anchor="middle" font-size="34" fill="#2563eb" font-family="sans-serif">がんばろう♪</text>
+</svg>

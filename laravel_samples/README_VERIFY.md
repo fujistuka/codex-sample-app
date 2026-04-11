@@ -56,6 +56,29 @@ powershell -ExecutionPolicy Bypass -File .\scripts\verify_laravel_samples.ps1
 
 ---
 
+
+## 1.5) PHP画面で確認する（このリポジトリだけでOK）
+
+`python run.py` は Python アプリ用なので、Laravelサンプルの確認には使いません。  
+PHP側の画面確認は次を使ってください。
+
+### Mac / Linux / Git Bash
+
+```bash
+./scripts/run_php_demo.sh
+```
+
+### Windows PowerShell
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run_php_demo.ps1
+```
+
+起動後にブラウザで `http://127.0.0.1:8081` を開くと、
+XP倍率・ストリークボーナス・レベルアップ・実績候補を画面で確認できます。
+
+---
+
 ## 2) 実Laravelプロジェクトに取り込んだ後の確認
 
 1. `config/gamification.php` を `config/` へコピー

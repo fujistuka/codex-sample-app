@@ -1,3 +1,9 @@
+Write-Host "[0/2] PHPコマンド確認..."
+if (-not (Get-Command php -ErrorAction SilentlyContinue)) {
+    Write-Error "php コマンドが見つかりません。PHPをインストールし、PATHへ追加してください。例: scoop install php"
+    exit 1
+}
+
 Write-Host "[1/2] Laravel sample PHP構文チェック..."
 $files = Get-ChildItem -Path laravel_samples -Recurse -Filter *.php
 foreach ($f in $files) {

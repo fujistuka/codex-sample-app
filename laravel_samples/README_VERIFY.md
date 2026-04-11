@@ -3,6 +3,34 @@
 この `laravel_samples/` は **Laravel本体ではなくサンプル差分** です。  
 そのため、このフォルダ単体では `php artisan test` は実行できません。
 
+
+## 0) まず `php` コマンドが使えるか確認（Windows）
+
+PowerShellで以下を実行:
+
+```powershell
+php -v
+```
+
+`php : 用語 'php' は...` のようなエラーが出る場合は、PHPが未インストールまたはPATH未設定です。
+
+### 例: scoop で入れる場合
+
+```powershell
+scoop install php
+php -v
+```
+
+### 例: chocolatey で入れる場合
+
+```powershell
+choco install php
+php -v
+```
+
+> XAMPP/Laragon利用時も、`php.exe` のあるフォルダを PATH に通してください。
+
+---
 ## 1) このリポジトリ内でできる確認
 
 ### A. PHP構文チェック（必須）

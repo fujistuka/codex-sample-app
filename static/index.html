@@ -101,6 +101,18 @@
         border-style: solid;
         border-color: transparent transparent var(--border) transparent;
       }
+      .progress {
+        height: 10px;
+        background: #eef2ff;
+        border-radius: 999px;
+        overflow: hidden;
+        margin: 8px 0;
+      }
+      .progress > span {
+        display: block;
+        height: 100%;
+        background: var(--accent);
+      }
 
       @media (max-width: 900px) {
         .layout { grid-template-columns: 1fr; }
@@ -207,6 +219,19 @@
         </main>
 
         <aside class="side">
+          <section class="card">
+            <h2>報酬ステータス</h2>
+            <p style="margin:0;">Lv <strong id="levelValue">1</strong> / XP <strong id="xpValue">0</strong></p>
+            <div class="progress"><span id="xpBar" style="width:0%"></span></div>
+            <p id="nextXpInfo" class="muted">次のレベルまで 100 XP</p>
+            <p id="streakInfo" class="muted">連続達成日数: 0日</p>
+            <p id="rewardFlash" class="muted"></p>
+            <div>
+              <p class="muted" style="margin-bottom:6px;">獲得バッジ</p>
+              <div id="badgeList"></div>
+            </div>
+          </section>
+
           <section class="card character-box">
             <h2>応援キャラクター</h2>
             <img id="characterImage" class="character-image" src="/static/character/default-girl.svg" alt="応援キャラクター" />
@@ -252,6 +277,13 @@
       const me = document.getElementById('me');
       const titleCalendar = document.getElementById('titleCalendar');
       const speechBubble = document.getElementById('speechBubble');
+      const levelValue = document.getElementById('levelValue');
+      const xpValue = document.getElementById('xpValue');
+      const xpBar = document.getElementById('xpBar');
+      const nextXpInfo = document.getElementById('nextXpInfo');
+      const streakInfo = document.getElementById('streakInfo');
+      const rewardFlash = document.getElementById('rewardFlash');
+      const badgeList = document.getElementById('badgeList');
       const imageFolder = document.getElementById('imageFolder');
       const imageFile = document.getElementById('imageFile');
       const characterImage = document.getElementById('characterImage');
@@ -341,6 +373,31 @@
         pageInfo.textContent = `${data.pagination.page} / ${data.pagination.total_pages} (全${data.pagination.total}件)`;
       }
 
+      function renderProgress(progress) {
+        levelValue.textContent = progress.level;
+        xpValue.textContent = progress.total_xp;
+        nextXpInfo.textContent = `次のレベルまで ${progress.xp_to_next_level} XP`;
+        streakInfo.textContent = `連続達成日数: ${progress.streak_days}日`;
+        const currentInLevel = progress.total_xp % 100;
+        xpBar.style.width = `${currentInLevel}%`;
+        badgeList.innerHTML = '';
+        if (!progress.badges.length) {
+          badgeList.innerHTML = '<span class="muted">まだバッジはありません</span>';
+          return;
+        }
+        progress.badges.forEach((b) => {
+          const span = document.createElement('span');
+          span.className = 'chip';
+          span.textContent = b.name;
+          badgeList.appendChild(span);
+        });
+      }
+
+      async function loadProgress() {
+        const data = await api('/api/progress', { method: 'GET' });
+        renderProgress(data);
+      }
+
       function showApp(isLoggedIn) {
         loginCard.classList.toggle('hidden', isLoggedIn);
         appSection.classList.toggle('hidden', !isLoggedIn);
@@ -355,6 +412,7 @@
           await loadMe();
           showApp(true);
           await loadTodos();
+          await loadProgress();
           randomCheer();
         } catch {
           state.token = '';
@@ -378,6 +436,7 @@
           showApp(true);
           state.page = 1;
           await loadTodos();
+          await loadProgress();
           randomCheer();
         } catch (e) {
           loginError.textContent = e.message;
@@ -404,6 +463,7 @@
           document.getElementById('tags').value = '';
           state.page = 1;
           await loadTodos();
+          await loadProgress();
           randomCheer();
         } catch (e) {
           createError.textContent = e.message;
@@ -435,8 +495,18 @@
         const action = btn.dataset.action;
 
         if (action === 'toggle') {
-          await api(`/api/todos/${id}/toggle`, { method: 'PATCH' });
+          const result = await api(`/api/todos/${id}/toggle`, { method: 'PATCH' });
+          if (result.reward) {
+            const r = result.reward;
+            rewardFlash.textContent = `+${r.gained_xp} XP（倍率 x${r.multiplier.toFixed(1)} / 連続${r.streak_days}日）`;
+            if (r.new_badges?.length) {
+              speechBubble.textContent = `新しい実績ゲット！${r.new_badges.map((b) => b.name).join('、')}`;
+            } else if (r.leveled_up) {
+              speechBubble.textContent = `レベルアップ！ Lv${r.level} になったよ♪`;
+            }
+          }
           await loadTodos();
+          await loadProgress();
           randomCheer();
           return;
         }
@@ -445,6 +515,7 @@
           if (!confirm('削除しますか？')) return;
           await api(`/api/todos/${id}`, { method: 'DELETE' });
           await loadTodos();
+          await loadProgress();
           randomCheer();
           return;
         }
@@ -457,6 +528,7 @@
             body: JSON.stringify({ title }),
           });
           await loadTodos();
+          await loadProgress();
           randomCheer();
         }
       });

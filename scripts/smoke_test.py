@@ -72,8 +72,18 @@ def main() -> int:
         filtered = request_json("GET", f"/api/todos?{query}", token=token)
         print(f"[OK] filter/sort/page: got={len(filtered['items'])}")
 
+        before_progress = request_json("GET", "/api/progress", token=token)
+        print(f"[OK] progress before: xp={before_progress['total_xp']} lv={before_progress['level']}")
+
         toggled = request_json("PATCH", f"/api/todos/{todo_id}/toggle", token=token)
         print(f"[OK] toggle: completed={toggled['completed']}")
+        if "reward" in toggled:
+            print(f"[OK] reward: +{toggled['reward']['gained_xp']}xp")
+
+        after_progress = request_json("GET", "/api/progress", token=token)
+        if after_progress["total_xp"] <= before_progress["total_xp"]:
+            raise RuntimeError("progress xp did not increase after completion")
+        print(f"[OK] progress after: xp={after_progress['total_xp']} lv={after_progress['level']}")
 
         updated = request_json("PUT", f"/api/todos/{todo_id}", token=token, payload={"title": "更新済み"})
         print(f"[OK] update: title={updated['title']}")

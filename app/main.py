@@ -8,6 +8,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 from urllib.parse import parse_qs, urlparse
+from app.gamification import (
+    BADGE_DEFINITIONS,
+    BASE_XP,
+    calculate_reward,
+    character_event_payload,
+    evaluate_badges,
+    level_from_total_xp,
+    xp_to_next_level,
+)
 
 try:
     from fastapi import FastAPI, Header, HTTPException
@@ -80,12 +89,80 @@ def init_db() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_progress (
+                user_id INTEGER PRIMARY KEY,
+                total_xp INTEGER NOT NULL DEFAULT 0,
+                level INTEGER NOT NULL DEFAULT 1,
+                streak_days INTEGER NOT NULL DEFAULT 0,
+                last_completed_on TEXT,
+                completed_tasks INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS achievement_master (
+                code TEXT PRIMARY KEY,
+                name TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_achievements (
+                user_id INTEGER NOT NULL,
+                achievement_code TEXT NOT NULL,
+                awarded_at TEXT NOT NULL,
+                PRIMARY KEY (user_id, achievement_code),
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                FOREIGN KEY (achievement_code) REFERENCES achievement_master(code)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS reward_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                todo_id INTEGER NOT NULL,
+                gained_xp INTEGER NOT NULL,
+                base_xp INTEGER NOT NULL,
+                multiplier REAL NOT NULL,
+                streak_bonus INTEGER NOT NULL,
+                streak_days INTEGER NOT NULL,
+                total_xp_after INTEGER NOT NULL,
+                level_after INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                FOREIGN KEY (todo_id) REFERENCES todos(id)
+            )
+            """
+        )
 
         user = conn.execute("SELECT id FROM users WHERE username = ?", (DEFAULT_USERNAME,)).fetchone()
         if user is None:
             conn.execute(
                 "INSERT INTO users(username, password) VALUES (?, ?)",
                 (DEFAULT_USERNAME, DEFAULT_PASSWORD),
+            )
+            user = conn.execute("SELECT id FROM users WHERE username = ?", (DEFAULT_USERNAME,)).fetchone()
+
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO user_progress(user_id, total_xp, level, streak_days, last_completed_on, completed_tasks, updated_at)
+            VALUES (?, 0, 1, 0, NULL, 0, ?)
+            """,
+            (int(user["id"]), iso_now()),
+        )
+
+        for code, name in BADGE_DEFINITIONS:
+            conn.execute(
+                "INSERT OR IGNORE INTO achievement_master(code, name) VALUES (?, ?)",
+                (code, name),
             )
 
 
@@ -107,6 +184,144 @@ def row_to_todo(row: sqlite3.Row) -> Dict[str, object]:
         "tags": [tag.strip() for tag in row["tags"].split(",") if tag.strip()],
         "created_at": row["created_at"],
     }
+
+
+def _today_str() -> str:
+    return datetime.utcnow().date().isoformat()
+
+
+def _load_progress(conn: sqlite3.Connection, user_id: int) -> sqlite3.Row:
+    row = conn.execute(
+        """
+        SELECT user_id, total_xp, level, streak_days, last_completed_on, completed_tasks, updated_at
+        FROM user_progress WHERE user_id = ?
+        """,
+        (user_id,),
+    ).fetchone()
+    if row is None:
+        conn.execute(
+            """
+            INSERT INTO user_progress(user_id, total_xp, level, streak_days, last_completed_on, completed_tasks, updated_at)
+            VALUES (?, 0, 1, 0, NULL, 0, ?)
+            """,
+            (user_id, iso_now()),
+        )
+        row = conn.execute(
+            "SELECT user_id, total_xp, level, streak_days, last_completed_on, completed_tasks, updated_at FROM user_progress WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+    return row
+
+
+def get_progress(user_id: int) -> Dict[str, object]:
+    with get_conn() as conn:
+        row = _load_progress(conn, user_id)
+        badges = conn.execute(
+            """
+            SELECT ua.achievement_code AS code, am.name, ua.awarded_at
+            FROM user_achievements ua
+            JOIN achievement_master am ON am.code = ua.achievement_code
+            WHERE ua.user_id = ?
+            ORDER BY ua.awarded_at DESC
+            """,
+            (user_id,),
+        ).fetchall()
+
+    total_xp = int(row["total_xp"])
+    current_level = int(row["level"])
+    return {
+        "total_xp": total_xp,
+        "level": current_level,
+        "streak_days": int(row["streak_days"]),
+        "completed_tasks": int(row["completed_tasks"]),
+        "xp_to_next_level": xp_to_next_level(total_xp),
+        "badges": [{"code": b["code"], "name": b["name"], "awarded_at": b["awarded_at"]} for b in badges],
+    }
+
+
+def grant_completion_reward(user_id: int, todo_id: int) -> Dict[str, object]:
+    now = datetime.utcnow()
+    today = now.date()
+
+    with get_conn() as conn:
+        progress = _load_progress(conn, user_id)
+        prev_total_xp = int(progress["total_xp"])
+        prev_level = int(progress["level"])
+        prev_streak = int(progress["streak_days"])
+        last_completed_on = progress["last_completed_on"]
+
+        streak_days = 1
+        if last_completed_on:
+            last_date = datetime.fromisoformat(last_completed_on).date()
+            diff_days = (today - last_date).days
+            if diff_days == 1:
+                streak_days = prev_streak + 1
+            elif diff_days <= 0:
+                streak_days = max(prev_streak, 1)
+
+        reward = calculate_reward(streak_days=streak_days, base_xp=BASE_XP)
+        new_total_xp = prev_total_xp + reward.gained_xp
+        new_level = level_from_total_xp(new_total_xp)
+        completed_tasks = int(progress["completed_tasks"]) + 1
+
+        conn.execute(
+            """
+            UPDATE user_progress
+            SET total_xp = ?, level = ?, streak_days = ?, last_completed_on = ?, completed_tasks = ?, updated_at = ?
+            WHERE user_id = ?
+            """,
+            (new_total_xp, new_level, streak_days, today.isoformat(), completed_tasks, iso_now(), user_id),
+        )
+
+        badge_codes = evaluate_badges(completed_tasks, streak_days, new_level)
+        new_badges: List[Dict[str, str]] = []
+        for code in badge_codes:
+            awarded_at = iso_now()
+            cur = conn.execute(
+                """
+                INSERT OR IGNORE INTO user_achievements(user_id, achievement_code, awarded_at)
+                VALUES (?, ?, ?)
+                """,
+                (user_id, code, awarded_at),
+            )
+            if cur.rowcount > 0:
+                name_row = conn.execute("SELECT name FROM achievement_master WHERE code = ?", (code,)).fetchone()
+                new_badges.append({"code": code, "name": name_row["name"] if name_row else code, "awarded_at": awarded_at})
+
+        conn.execute(
+            """
+            INSERT INTO reward_logs(
+                user_id, todo_id, gained_xp, base_xp, multiplier, streak_bonus, streak_days, total_xp_after, level_after, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                user_id,
+                todo_id,
+                reward.gained_xp,
+                reward.base_xp,
+                reward.multiplier,
+                reward.streak_bonus,
+                streak_days,
+                new_total_xp,
+                new_level,
+                iso_now(),
+            ),
+        )
+
+    summary = {
+        "gained_xp": reward.gained_xp,
+        "base_xp": reward.base_xp,
+        "multiplier": reward.multiplier,
+        "streak_bonus": reward.streak_bonus,
+        "streak_days": streak_days,
+        "total_xp": new_total_xp,
+        "level": new_level,
+        "xp_to_next_level": xp_to_next_level(new_total_xp),
+        "leveled_up": new_level > prev_level,
+        "new_badges": new_badges,
+    }
+    summary["character_event"] = character_event_payload(summary)
+    return summary
 
 
 def verify_login(username: str, password: str) -> Optional[int]:
@@ -322,7 +537,10 @@ def toggle_todo(user_id: int, todo_id: int) -> Dict[str, object]:
             "SELECT id, title, completed, due_date, priority, tags, created_at FROM todos WHERE id = ? AND user_id = ?",
             (todo_id, user_id),
         ).fetchone()
-    return row_to_todo(row)
+    todo = row_to_todo(row)
+    if completed == 1:
+        todo["reward"] = grant_completion_reward(user_id, todo_id)
+    return todo
 
 
 def delete_todo(user_id: int, todo_id: int) -> bool:
@@ -395,6 +613,11 @@ if FastAPI is not None:
     ) -> Dict[str, object]:
         user_id = require_user(authorization)
         return list_todos(user_id, q, status, sort_by, order, page, page_size)
+
+    @app.get("/api/progress")
+    def api_progress(authorization: Optional[str] = Header(default=None)) -> Dict[str, object]:
+        user_id = require_user(authorization)
+        return get_progress(user_id)
 
     @app.post("/api/todos")
     def post_todo(payload: TodoCreateRequest, authorization: Optional[str] = Header(default=None)) -> Dict[str, object]:
@@ -524,6 +747,12 @@ class FallbackTodoHandler(BaseHTTPRequestHandler):
                 page_size=int(query.get("page_size", ["10"])[0]),
             )
             return self._json(200, result)
+
+        if path == "/api/progress":
+            user_id = self._read_user()
+            if user_id is None:
+                return self._json(401, {"detail": "認証が必要です"})
+            return self._json(200, get_progress(user_id))
 
         return self._json(404, {"detail": "Not Found"})
 

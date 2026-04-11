@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import secrets
 import sqlite3
@@ -26,9 +27,9 @@ except ModuleNotFoundError:  # fallback for restricted/offline environments
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
-DATA_DIR = BASE_DIR / "data"
-DATA_DIR.mkdir(exist_ok=True)
-DB_PATH = DATA_DIR / "todo.db"
+DEFAULT_DB_PATH = BASE_DIR / "data" / "todo.db"
+DB_PATH = Path(os.getenv("TODO_DB_PATH", str(DEFAULT_DB_PATH))).expanduser().resolve()
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 DEFAULT_USERNAME = "admin"
 DEFAULT_PASSWORD = "password"

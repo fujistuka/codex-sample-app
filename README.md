@@ -76,6 +76,24 @@ python scripts/smoke_test.py
 
 任意画像を使う場合は、`static/character/` に画像ファイル（png/jpg/webp/svg）を置いて指定してください。
 
+
+## 永続化について
+
+- ToDoデータはSQLiteファイルに保存されるため、**サーバー再起動後も残ります**。
+- 既定の保存先は `data/todo.db` です。
+- 保存先を固定したい場合は環境変数 `TODO_DB_PATH` で指定できます。
+
+例:
+```bash
+TODO_DB_PATH=/absolute/path/todo.db python run.py
+```
+
+Windows (PowerShell) 例:
+```powershell
+$env:TODO_DB_PATH = "C:\\todo-app\\todo.db"
+python run.py
+```
+
 ## API（最小）
 
 - `POST /api/login`

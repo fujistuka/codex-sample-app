@@ -6,7 +6,7 @@ import sqlite3
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 from urllib.parse import parse_qs, urlparse
 
 try:
@@ -349,16 +349,16 @@ if FastAPI is not None:
         password: str
 
     class TodoCreateRequest(BaseModel):
-        title: str = Field(min_length=1)
+        title: str
         due_date: Optional[str] = None
         priority: int = 2
-        tags: List[str] = Field(default_factory=list)
+        tags: Union[List[str], str, None] = Field(default_factory=list)
 
     class TodoUpdateRequest(BaseModel):
         title: Optional[str] = None
         due_date: Optional[str] = None
         priority: Optional[int] = None
-        tags: Optional[List[str]] = None
+        tags: Optional[Union[List[str], str]] = None
 
     def require_user(authorization: Optional[str]) -> int:
         user_id = user_id_from_token(authorization)

@@ -2,7 +2,7 @@ import json
 import re
 import secrets
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -32,6 +32,7 @@ DB_PATH = DATA_DIR / "todo.db"
 
 DEFAULT_USERNAME = "admin"
 DEFAULT_PASSWORD = "password"
+SESSION_DAYS = 30
 
 sessions: Dict[str, int] = {}
 
@@ -68,6 +69,16 @@ def init_db() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sessions (
+                token TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                expires_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+            """
+        )
 
         user = conn.execute("SELECT id FROM users WHERE username = ?", (DEFAULT_USERNAME,)).fetchone()
         if user is None:
@@ -79,6 +90,10 @@ def init_db() -> None:
 
 def iso_now() -> str:
     return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+
+
+def parse_iso(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
 def row_to_todo(row: sqlite3.Row) -> Dict[str, object]:
@@ -104,7 +119,13 @@ def verify_login(username: str, password: str) -> Optional[int]:
 
 def create_session(user_id: int) -> str:
     token = secrets.token_hex(24)
+    expires_at = (datetime.utcnow() + timedelta(days=SESSION_DAYS)).replace(microsecond=0).isoformat() + "Z"
     sessions[token] = user_id
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO sessions(token, user_id, expires_at) VALUES (?, ?, ?)",
+            (token, user_id, expires_at),
+        )
     return token
 
 
@@ -113,8 +134,27 @@ def user_id_from_token(authorization: Optional[str]) -> Optional[int]:
         return None
     if not authorization.startswith("Bearer "):
         return None
+
     token = authorization.replace("Bearer ", "", 1).strip()
-    return sessions.get(token)
+    if token in sessions:
+        return sessions[token]
+
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT user_id, expires_at FROM sessions WHERE token = ?",
+            (token,),
+        ).fetchone()
+        if row is None:
+            return None
+
+        expires_at = parse_iso(row["expires_at"])
+        if expires_at < datetime.now(expires_at.tzinfo):
+            conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+            return None
+
+        user_id = int(row["user_id"])
+        sessions[token] = user_id
+        return user_id
 
 
 def validate_todo_payload(payload: Dict[str, object], partial: bool = False) -> Tuple[str, Optional[str], int, List[str]]:

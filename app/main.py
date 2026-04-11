@@ -450,6 +450,14 @@ class FallbackTodoHandler(BaseHTTPRequestHandler):
                     mime = "text/css; charset=utf-8"
                 elif file_path.suffix == ".html":
                     mime = "text/html; charset=utf-8"
+                elif file_path.suffix == ".svg":
+                    mime = "image/svg+xml"
+                elif file_path.suffix == ".png":
+                    mime = "image/png"
+                elif file_path.suffix in {".jpg", ".jpeg"}:
+                    mime = "image/jpeg"
+                elif file_path.suffix == ".webp":
+                    mime = "image/webp"
                 return self._serve_file(file_path, mime)
             return self._json(404, {"detail": "Not Found"})
 

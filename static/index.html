@@ -10,10 +10,11 @@
         --text: #111827;
         --muted: #6b7280;
         --accent: #2563eb;
+        --soft: #f8fbff;
       }
       body {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        max-width: 980px;
+        max-width: 1080px;
         margin: 24px auto;
         color: var(--text);
         padding: 0 16px;
@@ -25,11 +26,22 @@
         border-radius: 12px;
         padding: 16px;
         margin-bottom: 16px;
+        background: #fff;
       }
       .row {
         display: flex;
         gap: 8px;
         flex-wrap: wrap;
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: 1fr 280px;
+        gap: 16px;
+      }
+      .side {
+        position: sticky;
+        top: 16px;
+        align-self: start;
       }
       input, select, button {
         border: 1px solid var(--border);
@@ -48,10 +60,62 @@
       .chip { display: inline-block; padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; margin-right: 4px; font-size: 12px; }
       .done { text-decoration: line-through; color: var(--muted); }
       .hidden { display: none; }
+      .calendar-inline { width: 220px; }
+
+      .character-box {
+        background: var(--soft);
+      }
+      .character-image {
+        width: 140px;
+        height: 140px;
+        object-fit: cover;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        display: block;
+        margin: 0 auto 10px;
+      }
+      .speech {
+        position: relative;
+        background: white;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 10px;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .speech::after {
+        content: '';
+        position: absolute;
+        left: 18px;
+        top: -8px;
+        border-width: 0 8px 8px 8px;
+        border-style: solid;
+        border-color: transparent transparent white transparent;
+      }
+      .speech::before {
+        content: '';
+        position: absolute;
+        left: 17px;
+        top: -10px;
+        border-width: 0 9px 9px 9px;
+        border-style: solid;
+        border-color: transparent transparent var(--border) transparent;
+      }
+
+      @media (max-width: 900px) {
+        .layout { grid-template-columns: 1fr; }
+        .side { position: static; }
+      }
     </style>
   </head>
   <body>
     <h1>ToDoアプリ（MVP）</h1>
+
+    <section class="card">
+      <h2>今日の日付</h2>
+      <input id="titleCalendar" class="calendar-inline" type="date" />
+      <p class="muted">タイトルの下のカレンダーです。日付確認に使ってください。</p>
+    </section>
 
     <section id="loginCard" class="card">
       <h2>ログイン</h2>
@@ -65,79 +129,103 @@
     </section>
 
     <section id="appSection" class="hidden">
-      <div class="card">
-        <div class="row" style="justify-content: space-between; align-items: center">
-          <h2 style="margin: 0">タスク管理</h2>
-          <div>
-            <span id="me" class="muted"></span>
-            <button id="logoutBtn">ログアウト</button>
+      <div class="layout">
+        <main>
+          <div class="card">
+            <div class="row" style="justify-content: space-between; align-items: center">
+              <h2 style="margin: 0">タスク管理</h2>
+              <div>
+                <span id="me" class="muted"></span>
+                <button id="logoutBtn">ログアウト</button>
+              </div>
+            </div>
           </div>
-        </div>
+
+          <section class="card">
+            <h2>新規ToDo</h2>
+            <div class="row">
+              <input id="title" class="grow" placeholder="タイトル" />
+              <input id="dueDate" type="date" />
+              <select id="priority">
+                <option value="1">高</option>
+                <option value="2" selected>中</option>
+                <option value="3">低</option>
+              </select>
+              <input id="tags" class="grow" placeholder="タグ（カンマ区切り）" />
+              <button id="createBtn" class="primary">追加</button>
+            </div>
+            <p id="createError" class="error"></p>
+          </section>
+
+          <section class="card">
+            <h2>検索・絞り込み</h2>
+            <div class="row">
+              <input id="q" class="grow" placeholder="キーワード検索" />
+              <select id="status">
+                <option value="all">すべて</option>
+                <option value="active">未完了</option>
+                <option value="completed">完了</option>
+              </select>
+              <select id="sortBy">
+                <option value="created_at">作成日</option>
+                <option value="due_date">期限日</option>
+                <option value="priority">優先度</option>
+              </select>
+              <select id="order">
+                <option value="desc">降順</option>
+                <option value="asc">昇順</option>
+              </select>
+              <select id="pageSize">
+                <option value="5">5件</option>
+                <option value="10" selected>10件</option>
+                <option value="20">20件</option>
+              </select>
+              <button id="searchBtn">適用</button>
+            </div>
+          </section>
+
+          <section class="card">
+            <table>
+              <thead>
+                <tr>
+                  <th>状態</th>
+                  <th>タイトル</th>
+                  <th>期限</th>
+                  <th>優先度</th>
+                  <th>タグ</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="todoBody"></tbody>
+            </table>
+            <div class="row" style="margin-top: 12px; justify-content: space-between;">
+              <button id="prevBtn">前へ</button>
+              <span id="pageInfo" class="muted"></span>
+              <button id="nextBtn">次へ</button>
+            </div>
+          </section>
+        </main>
+
+        <aside class="side">
+          <section class="card character-box">
+            <h2>応援キャラクター</h2>
+            <img id="characterImage" class="character-image" src="/static/character/default-girl.svg" alt="応援キャラクター" />
+            <div id="speechBubble" class="speech">今日も一歩ずつ進めよう♪</div>
+            <div class="row" style="margin-top: 10px;">
+              <button id="randomMessageBtn">セリフ更新</button>
+            </div>
+            <hr style="border: none; border-top: 1px solid var(--border); margin: 12px 0;" />
+            <p class="muted" style="margin-bottom: 6px;">画像フォルダ指定（URLパス）</p>
+            <input id="imageFolder" value="/static/character" />
+            <p class="muted" style="margin: 6px 0;">画像ファイル名</p>
+            <input id="imageFile" value="default-girl.svg" />
+            <div class="row" style="margin-top: 8px;">
+              <button id="applyImageBtn">画像を適用</button>
+            </div>
+            <p class="muted">例: `/static/character` + `my-girl.png`</p>
+          </section>
+        </aside>
       </div>
-
-      <section class="card">
-        <h2>新規ToDo</h2>
-        <div class="row">
-          <input id="title" class="grow" placeholder="タイトル" />
-          <input id="dueDate" type="date" />
-          <select id="priority">
-            <option value="1">高</option>
-            <option value="2" selected>中</option>
-            <option value="3">低</option>
-          </select>
-          <input id="tags" class="grow" placeholder="タグ（カンマ区切り）" />
-          <button id="createBtn" class="primary">追加</button>
-        </div>
-        <p id="createError" class="error"></p>
-      </section>
-
-      <section class="card">
-        <h2>検索・絞り込み</h2>
-        <div class="row">
-          <input id="q" class="grow" placeholder="キーワード検索" />
-          <select id="status">
-            <option value="all">すべて</option>
-            <option value="active">未完了</option>
-            <option value="completed">完了</option>
-          </select>
-          <select id="sortBy">
-            <option value="created_at">作成日</option>
-            <option value="due_date">期限日</option>
-            <option value="priority">優先度</option>
-          </select>
-          <select id="order">
-            <option value="desc">降順</option>
-            <option value="asc">昇順</option>
-          </select>
-          <select id="pageSize">
-            <option value="5">5件</option>
-            <option value="10" selected>10件</option>
-            <option value="20">20件</option>
-          </select>
-          <button id="searchBtn">適用</button>
-        </div>
-      </section>
-
-      <section class="card">
-        <table>
-          <thead>
-            <tr>
-              <th>状態</th>
-              <th>タイトル</th>
-              <th>期限</th>
-              <th>優先度</th>
-              <th>タグ</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody id="todoBody"></tbody>
-        </table>
-        <div class="row" style="margin-top: 12px; justify-content: space-between;">
-          <button id="prevBtn">前へ</button>
-          <span id="pageInfo" class="muted"></span>
-          <button id="nextBtn">次へ</button>
-        </div>
-      </section>
     </section>
 
     <script>
@@ -147,6 +235,14 @@
         totalPages: 1,
       };
 
+      const cheerMessages = [
+        'すごい！今日のタスク、きっと気持ちよく片付くよ♪',
+        'えらいえらいっ！小さな一歩が大きな成果になるよ！',
+        'その調子っ♪ ひとつ終わるたびに未来が軽くなるね！',
+        'あなたなら大丈夫！いっしょにコツコツ進めよう！',
+        '今日も頑張ってて素敵だよ！終わったら自分をほめようね♪'
+      ];
+
       const loginCard = document.getElementById('loginCard');
       const appSection = document.getElementById('appSection');
       const loginError = document.getElementById('loginError');
@@ -154,6 +250,31 @@
       const todoBody = document.getElementById('todoBody');
       const pageInfo = document.getElementById('pageInfo');
       const me = document.getElementById('me');
+      const titleCalendar = document.getElementById('titleCalendar');
+      const speechBubble = document.getElementById('speechBubble');
+      const imageFolder = document.getElementById('imageFolder');
+      const imageFile = document.getElementById('imageFile');
+      const characterImage = document.getElementById('characterImage');
+
+      function setTodayToCalendar() {
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, '0');
+        const d = String(now.getDate()).padStart(2, '0');
+        titleCalendar.value = `${y}-${m}-${d}`;
+      }
+
+      function randomCheer() {
+        const msg = cheerMessages[Math.floor(Math.random() * cheerMessages.length)];
+        speechBubble.textContent = msg;
+      }
+
+      function applyCharacterImage() {
+        const folder = imageFolder.value.trim().replace(/\/$/, '');
+        const file = imageFile.value.trim();
+        if (!folder || !file) return;
+        characterImage.src = `${folder}/${file}`;
+      }
 
       async function api(path, options = {}) {
         const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
@@ -234,6 +355,7 @@
           await loadMe();
           showApp(true);
           await loadTodos();
+          randomCheer();
         } catch {
           state.token = '';
           localStorage.removeItem('token');
@@ -256,6 +378,7 @@
           showApp(true);
           state.page = 1;
           await loadTodos();
+          randomCheer();
         } catch (e) {
           loginError.textContent = e.message;
         }
@@ -281,6 +404,7 @@
           document.getElementById('tags').value = '';
           state.page = 1;
           await loadTodos();
+          randomCheer();
         } catch (e) {
           createError.textContent = e.message;
         }
@@ -313,6 +437,7 @@
         if (action === 'toggle') {
           await api(`/api/todos/${id}/toggle`, { method: 'PATCH' });
           await loadTodos();
+          randomCheer();
           return;
         }
 
@@ -320,6 +445,7 @@
           if (!confirm('削除しますか？')) return;
           await api(`/api/todos/${id}`, { method: 'DELETE' });
           await loadTodos();
+          randomCheer();
           return;
         }
 
@@ -331,9 +457,18 @@
             body: JSON.stringify({ title }),
           });
           await loadTodos();
+          randomCheer();
         }
       });
 
+      document.getElementById('randomMessageBtn').addEventListener('click', randomCheer);
+      document.getElementById('applyImageBtn').addEventListener('click', applyCharacterImage);
+      characterImage.addEventListener('error', () => {
+        speechBubble.textContent = '画像が見つからないみたい…フォルダとファイル名を確認してね！';
+      });
+
+      setTodayToCalendar();
+      randomCheer();
       tryAutoLogin();
     </script>
   </body>

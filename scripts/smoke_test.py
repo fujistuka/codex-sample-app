@@ -74,6 +74,7 @@ def main() -> int:
 
         before_progress = request_json("GET", "/api/progress", token=token)
         print(f"[OK] progress before: xp={before_progress['total_xp']} lv={before_progress['level']}")
+        print(f"[OK] login streak: {before_progress['login_streak_days']}日")
 
         toggled = request_json("PATCH", f"/api/todos/{todo_id}/toggle", token=token)
         print(f"[OK] toggle: completed={toggled['completed']}")
@@ -83,6 +84,8 @@ def main() -> int:
         after_progress = request_json("GET", "/api/progress", token=token)
         if after_progress["total_xp"] <= before_progress["total_xp"]:
             raise RuntimeError("progress xp did not increase after completion")
+        if "badge_summary" not in after_progress:
+            raise RuntimeError("badge_summary missing in /api/progress")
         print(f"[OK] progress after: xp={after_progress['total_xp']} lv={after_progress['level']}")
 
         updated = request_json("PUT", f"/api/todos/{todo_id}", token=token, payload={"title": "更新済み"})

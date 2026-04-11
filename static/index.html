@@ -113,6 +113,41 @@
         height: 100%;
         background: var(--accent);
       }
+      .badge-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+      }
+      .badge-card {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 8px;
+        background: #fff;
+        font-size: 12px;
+      }
+      .badge-icon { font-size: 18px; margin-right: 6px; }
+      .calendar-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 4px;
+        margin-top: 8px;
+      }
+      .calendar-cell {
+        height: 24px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        font-size: 11px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--muted);
+      }
+      .calendar-cell.filled {
+        background: #dbeafe;
+        border-color: #93c5fd;
+        color: #1d4ed8;
+        font-weight: 600;
+      }
 
       @media (max-width: 900px) {
         .layout { grid-template-columns: 1fr; }
@@ -224,11 +259,16 @@
             <p style="margin:0;">Lv <strong id="levelValue">1</strong> / XP <strong id="xpValue">0</strong></p>
             <div class="progress"><span id="xpBar" style="width:0%"></span></div>
             <p id="nextXpInfo" class="muted">次のレベルまで 100 XP</p>
+            <p id="loginStreakInfo" class="muted">連続ログイン: 0日</p>
             <p id="streakInfo" class="muted">連続達成日数: 0日</p>
             <p id="rewardFlash" class="muted"></p>
             <div>
-              <p class="muted" style="margin-bottom:6px;">獲得バッジ</p>
-              <div id="badgeList"></div>
+              <p id="badgeSummary" class="muted" style="margin-bottom:6px;">バッジ 0/0</p>
+              <div id="badgeList" class="badge-grid"></div>
+            </div>
+            <div style="margin-top: 12px;">
+              <p class="muted" style="margin-bottom:6px;">達成カレンダー（今月）</p>
+              <div id="achievementCalendar" class="calendar-grid"></div>
             </div>
           </section>
 
@@ -281,9 +321,12 @@
       const xpValue = document.getElementById('xpValue');
       const xpBar = document.getElementById('xpBar');
       const nextXpInfo = document.getElementById('nextXpInfo');
+      const loginStreakInfo = document.getElementById('loginStreakInfo');
       const streakInfo = document.getElementById('streakInfo');
       const rewardFlash = document.getElementById('rewardFlash');
+      const badgeSummary = document.getElementById('badgeSummary');
       const badgeList = document.getElementById('badgeList');
+      const achievementCalendar = document.getElementById('achievementCalendar');
       const imageFolder = document.getElementById('imageFolder');
       const imageFile = document.getElementById('imageFile');
       const characterImage = document.getElementById('characterImage');
@@ -373,24 +416,44 @@
         pageInfo.textContent = `${data.pagination.page} / ${data.pagination.total_pages} (全${data.pagination.total}件)`;
       }
 
+      function renderAchievementCalendar(achievementDates) {
+        achievementCalendar.innerHTML = '';
+        const achieved = new Set(achievementDates || []);
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = now.getMonth();
+        const lastDay = new Date(year, month + 1, 0).getDate();
+        for (let day = 1; day <= lastDay; day += 1) {
+          const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+          const cell = document.createElement('div');
+          cell.className = `calendar-cell${achieved.has(dateStr) ? ' filled' : ''}`;
+          cell.textContent = String(day);
+          achievementCalendar.appendChild(cell);
+        }
+      }
+
       function renderProgress(progress) {
         levelValue.textContent = progress.level;
         xpValue.textContent = progress.total_xp;
         nextXpInfo.textContent = `次のレベルまで ${progress.xp_to_next_level} XP`;
+        loginStreakInfo.textContent = `連続ログイン: ${progress.login_streak_days}日`;
         streakInfo.textContent = `連続達成日数: ${progress.streak_days}日`;
         const currentInLevel = progress.total_xp % 100;
         xpBar.style.width = `${currentInLevel}%`;
+        badgeSummary.textContent = `バッジ ${progress.badge_summary.earned}/${progress.badge_summary.total}`;
         badgeList.innerHTML = '';
         if (!progress.badges.length) {
           badgeList.innerHTML = '<span class="muted">まだバッジはありません</span>';
+          renderAchievementCalendar(progress.achievement_dates);
           return;
         }
         progress.badges.forEach((b) => {
-          const span = document.createElement('span');
-          span.className = 'chip';
-          span.textContent = b.name;
-          badgeList.appendChild(span);
+          const card = document.createElement('div');
+          card.className = 'badge-card';
+          card.innerHTML = `<span class="badge-icon">${b.icon || '🏅'}</span><strong>${b.name}</strong>`;
+          badgeList.appendChild(card);
         });
+        renderAchievementCalendar(progress.achievement_dates);
       }
 
       async function loadProgress() {

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 BASE_XP = 10
 LEVEL_XP_STEP = 100
@@ -21,11 +20,11 @@ STREAK_BONUSES = (
 )
 
 BADGE_DEFINITIONS = [
-    ("first_task", "初めてタスクを完了した"),
-    ("streak_7", "7日連続達成した"),
-    ("streak_30", "30日連続達成した"),
-    ("task_100", "タスクを100件完了した"),
-    ("level_5", "レベル5に到達した"),
+    {"code": "first_task", "name": "初めてタスクを完了した", "icon": "🌱"},
+    {"code": "streak_7", "name": "7日連続達成した", "icon": "🔥"},
+    {"code": "streak_30", "name": "30日連続達成した", "icon": "🏆"},
+    {"code": "task_100", "name": "タスクを100件完了した", "icon": "💯"},
+    {"code": "level_5", "name": "レベル5に到達した", "icon": "⭐"},
 ]
 
 
@@ -64,21 +63,6 @@ def calculate_reward(streak_days: int, base_xp: int = BASE_XP) -> RewardBreakdow
     bonus = streak_bonus(streak_days)
     gained = int(base_xp * multiplier) + bonus
     return RewardBreakdown(base_xp=base_xp, multiplier=multiplier, streak_bonus=bonus, gained_xp=gained)
-
-
-def calculate_next_streak(last_completed_on: str | None, now_dt: datetime) -> int:
-    if not last_completed_on:
-        return 1
-
-    last_date = datetime.fromisoformat(last_completed_on).date()
-    now_date = now_dt.date()
-    diff_days = (now_date - last_date).days
-
-    if diff_days <= 0:
-        return 1
-    if diff_days == 1:
-        return None  # caller should increment existing
-    return 1
 
 
 def evaluate_badges(total_completed: int, streak_days: int, level: int) -> List[str]:

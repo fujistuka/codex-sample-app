@@ -107,7 +107,8 @@ def init_db() -> None:
             """
             CREATE TABLE IF NOT EXISTS achievement_master (
                 code TEXT PRIMARY KEY,
-                name TEXT NOT NULL
+                name TEXT NOT NULL,
+                icon TEXT NOT NULL DEFAULT '🏅'
             )
             """
         )
@@ -142,6 +143,27 @@ def init_db() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS completion_history (
+                user_id INTEGER NOT NULL,
+                completed_on TEXT NOT NULL,
+                PRIMARY KEY(user_id, completed_on),
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS login_activity (
+                user_id INTEGER PRIMARY KEY,
+                last_login_on TEXT,
+                login_streak_days INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+            """
+        )
 
         user = conn.execute("SELECT id FROM users WHERE username = ?", (DEFAULT_USERNAME,)).fetchone()
         if user is None:
@@ -159,10 +181,18 @@ def init_db() -> None:
             (int(user["id"]), iso_now()),
         )
 
-        for code, name in BADGE_DEFINITIONS:
+        columns = [r["name"] for r in conn.execute("PRAGMA table_info(achievement_master)").fetchall()]
+        if "icon" not in columns:
+            conn.execute("ALTER TABLE achievement_master ADD COLUMN icon TEXT NOT NULL DEFAULT '🏅'")
+
+        for badge in BADGE_DEFINITIONS:
             conn.execute(
-                "INSERT OR IGNORE INTO achievement_master(code, name) VALUES (?, ?)",
-                (code, name),
+                "INSERT OR IGNORE INTO achievement_master(code, name, icon) VALUES (?, ?, ?)",
+                (badge["code"], badge["name"], badge["icon"]),
+            )
+            conn.execute(
+                "UPDATE achievement_master SET name = ?, icon = ? WHERE code = ?",
+                (badge["name"], badge["icon"], badge["code"]),
             )
 
 
@@ -218,7 +248,7 @@ def get_progress(user_id: int) -> Dict[str, object]:
         row = _load_progress(conn, user_id)
         badges = conn.execute(
             """
-            SELECT ua.achievement_code AS code, am.name, ua.awarded_at
+            SELECT ua.achievement_code AS code, am.name, am.icon, ua.awarded_at
             FROM user_achievements ua
             JOIN achievement_master am ON am.code = ua.achievement_code
             WHERE ua.user_id = ?
@@ -226,16 +256,37 @@ def get_progress(user_id: int) -> Dict[str, object]:
             """,
             (user_id,),
         ).fetchall()
+        total_badges = conn.execute("SELECT COUNT(*) AS cnt FROM achievement_master").fetchone()["cnt"]
+        achieved_dates = conn.execute(
+            """
+            SELECT completed_on
+            FROM completion_history
+            WHERE user_id = ?
+            ORDER BY completed_on DESC
+            LIMIT 90
+            """,
+            (user_id,),
+        ).fetchall()
+        login_row = conn.execute(
+            "SELECT login_streak_days, last_login_on FROM login_activity WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
 
     total_xp = int(row["total_xp"])
     current_level = int(row["level"])
+    login_streak_days = int(login_row["login_streak_days"]) if login_row else 0
+    last_login_on = login_row["last_login_on"] if login_row else None
     return {
         "total_xp": total_xp,
         "level": current_level,
         "streak_days": int(row["streak_days"]),
         "completed_tasks": int(row["completed_tasks"]),
+        "login_streak_days": login_streak_days,
+        "last_login_on": last_login_on,
         "xp_to_next_level": xp_to_next_level(total_xp),
-        "badges": [{"code": b["code"], "name": b["name"], "awarded_at": b["awarded_at"]} for b in badges],
+        "badges": [{"code": b["code"], "name": b["name"], "icon": b["icon"], "awarded_at": b["awarded_at"]} for b in badges],
+        "badge_summary": {"earned": len(badges), "total": int(total_badges)},
+        "achievement_dates": [r["completed_on"] for r in achieved_dates],
     }
 
 
@@ -271,6 +322,13 @@ def grant_completion_reward(user_id: int, todo_id: int) -> Dict[str, object]:
             WHERE user_id = ?
             """,
             (new_total_xp, new_level, streak_days, today.isoformat(), completed_tasks, iso_now(), user_id),
+        )
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO completion_history(user_id, completed_on)
+            VALUES (?, ?)
+            """,
+            (user_id, today.isoformat()),
         )
 
         badge_codes = evaluate_badges(completed_tasks, streak_days, new_level)
@@ -331,6 +389,45 @@ def verify_login(username: str, password: str) -> Optional[int]:
             (username, password),
         ).fetchone()
         return int(row["id"]) if row else None
+
+
+def record_login_activity(user_id: int) -> None:
+    today = datetime.utcnow().date()
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT last_login_on, login_streak_days FROM login_activity WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+        if row is None:
+            conn.execute(
+                """
+                INSERT INTO login_activity(user_id, last_login_on, login_streak_days, updated_at)
+                VALUES (?, ?, 1, ?)
+                """,
+                (user_id, today.isoformat(), iso_now()),
+            )
+            return
+
+        last_login_on = row["last_login_on"]
+        streak = int(row["login_streak_days"])
+        if last_login_on:
+            last_date = datetime.fromisoformat(last_login_on).date()
+            diff_days = (today - last_date).days
+            if diff_days == 1:
+                streak += 1
+            elif diff_days > 1:
+                streak = 1
+        else:
+            streak = 1
+
+        conn.execute(
+            """
+            UPDATE login_activity
+            SET last_login_on = ?, login_streak_days = ?, updated_at = ?
+            WHERE user_id = ?
+            """,
+            (today.isoformat(), streak, iso_now(), user_id),
+        )
 
 
 def create_session(user_id: int) -> str:
@@ -593,6 +690,7 @@ if FastAPI is not None:
         user_id = verify_login(payload.username, payload.password)
         if user_id is None:
             raise HTTPException(status_code=401, detail="ログインに失敗しました")
+        record_login_activity(user_id)
         token = create_session(user_id)
         return {"token": token, "username": payload.username}
 
@@ -771,6 +869,7 @@ class FallbackTodoHandler(BaseHTTPRequestHandler):
             if user_id is None:
                 return self._json(401, {"detail": "ログインに失敗しました"})
 
+            record_login_activity(user_id)
             token = create_session(user_id)
             return self._json(200, {"token": token, "username": username})
 

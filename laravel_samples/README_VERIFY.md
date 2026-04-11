@@ -6,6 +6,13 @@
 
 ## 0) まず `php` コマンドが使えるか確認（Windows）
 
+## Important
+
+- This repository is **not** a Laravel application root. It does not contain an `artisan` file.
+- So, `php artisan ...` will fail in this repository with: `Could not open input file: artisan`.
+- Run `php artisan ...` only inside your real Laravel project root (where `artisan` exists).
+
+
 PowerShellで以下を実行:
 
 ```powershell

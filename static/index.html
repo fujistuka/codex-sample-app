@@ -381,6 +381,7 @@
         normal: {
           label: '通常',
           image: '/static/character/mood-normal.png',
+          fallbackImage: '/static/character/mood-normal.svg',
           messages: {
             idle: '準備OK！今日はどこから進める？',
             completed: 'ナイス完了！この調子で次もいこう✨'
@@ -396,6 +397,7 @@
         happy: {
           label: 'うれしい',
           image: '/static/character/mood-happy.png',
+          fallbackImage: '/static/character/mood-happy.svg',
           messages: {
             completed: 'すごい！達成できたね。ちゃんと前進してるよ♪',
             badge: '実績ゲット！頑張りが形になってるよ🏅'
@@ -411,6 +413,7 @@
         encouraging: {
           label: 'あと少し',
           image: '/static/character/mood-encouraging.png',
+          fallbackImage: '/static/character/mood-encouraging.svg',
           messages: {
             idle: 'あと1歩！次のタスクを終わらせれば今日の目標達成だよ。'
           },
@@ -425,6 +428,7 @@
         tired: {
           label: 'ゆっくり再開',
           image: '/static/character/mood-tired.png',
+          fallbackImage: '/static/character/mood-tired.svg',
           messages: {
             idle: 'おかえりなさい。無理せず、まずは小さな1タスクから始めよう。'
           },
@@ -439,6 +443,7 @@
         excited: {
           label: '最高！',
           image: '/static/character/mood-excited.png',
+          fallbackImage: '/static/character/mood-excited.svg',
           messages: {
             levelup: 'レベルアップおめでとう！積み重ねが力になってるよ🎉'
           },
@@ -456,6 +461,9 @@
       let lastTodos = [];
       let lastEventType = 'idle';
       let talkIndex = 0;
+      const CHARACTER_TALK_POOL = Object.entries(CHARACTER_MOODS).flatMap(([mood, cfg]) =>
+        (cfg.talks || []).map((t) => ({ ...t, mood: t.mood || mood }))
+      );
 
       const loginCard = document.getElementById('loginCard');
       const appSection = document.getElementById('appSection');
@@ -540,6 +548,7 @@
         characterMood = safeMood;
         heroCard.dataset.mood = safeMood;
         heroStateBadge.textContent = moodConfig.label;
+        characterImage.dataset.fallback = moodConfig.fallbackImage || '';
         characterImage.src = moodConfig.image;
         return moodConfig;
       }
@@ -555,10 +564,8 @@
       }
 
       function cycleCharacterTalk() {
-        const moodConfig = CHARACTER_MOODS[characterMood] || CHARACTER_MOODS.normal;
-        const talks = moodConfig.talks || [];
-        if (!talks.length) return;
-        const item = talks[talkIndex % talks.length];
+        if (!CHARACTER_TALK_POOL.length) return;
+        const item = CHARACTER_TALK_POOL[talkIndex % CHARACTER_TALK_POOL.length];
         const text = typeof item === 'string' ? item : item.text;
         const nextMood = typeof item === 'string' ? characterMood : (item.mood || characterMood);
         talkIndex += 1;
@@ -854,6 +861,11 @@
       });
 
       characterImage.addEventListener('error', () => {
+        const fallback = characterImage.dataset.fallback;
+        if (fallback && !characterImage.src.endsWith(fallback)) {
+          characterImage.src = fallback;
+          return;
+        }
         setCharacterState({ eventType: 'idle', mood: 'normal', extraText: '画像が見つからないみたい…設定を確認してね。' });
       });
       characterImage.addEventListener('click', cycleCharacterTalk);

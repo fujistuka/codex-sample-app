@@ -54,6 +54,10 @@
         border: 1px solid #dbeafe;
         background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
       }
+      .hero[data-mood='happy'] { border-color: #bfdbfe; }
+      .hero[data-mood='encouraging'] { border-color: #93c5fd; }
+      .hero[data-mood='tired'] { border-color: #d1d5db; background: linear-gradient(180deg, #fafafa 0%, #ffffff 100%); }
+      .hero[data-mood='excited'] { border-color: #a5b4fc; background: linear-gradient(180deg, #f5f3ff 0%, #ffffff 100%); }
       .hero-grid { display: grid; grid-template-columns: 38% 62%; gap: 18px; align-items: center; }
       .hero-badge {
         display: inline-block;
@@ -238,7 +242,7 @@
     </section>
 
     <section id="appSection" class="hidden">
-      <section class="card hero">
+      <section id="heroCard" class="card hero" data-mood="normal">
         <span id="heroStateBadge" class="hero-badge">今日も一歩ずつ</span>
         <div class="hero-grid">
           <div id="characterStage" class="character-stage">
@@ -372,36 +376,52 @@
         totalPages: 1,
       };
 
-      const reactionTemplates = {
-        idle: {
-          badge: '今日も一歩ずつ',
-          message: '準備OK！今日はどこから進める？',
-          nextAction: '最優先タスクを1つ完了する'
+      const CHARACTER_MOODS = {
+        normal: {
+          label: '通常',
+          image: '/static/character/default-girl.png',
+          messages: {
+            idle: '準備OK！今日はどこから進める？',
+            completed: 'ナイス完了！この調子で次もいこう✨'
+          }
         },
-        created: {
-          badge: '計画完了',
-          message: 'いいスタート！次は1つ完了を目指そう♪',
-          nextAction: '作成したタスクを1つ完了する'
+        happy: {
+          label: 'うれしい',
+          image: '/static/character/default-girl.png',
+          messages: {
+            completed: 'すごい！達成できたね。ちゃんと前進してるよ♪',
+            badge: '実績ゲット！頑張りが形になってるよ🏅'
+          }
         },
-        completed: {
-          badge: '達成できた！',
-          message: 'ナイス完了！この調子で次もいこう✨',
-          nextAction: '次の未完了タスクに着手する'
+        encouraging: {
+          label: 'あと少し',
+          image: '/static/character/default-girl.png',
+          messages: {
+            idle: 'あと1歩！次のタスクを終わらせれば今日の目標達成だよ。'
+          }
         },
-        levelup: {
-          badge: 'レベルアップ！',
-          message: 'すごい！新しいレベルに到達したよ🎉',
-          nextAction: '勢いのままもう1タスク完了する'
+        tired: {
+          label: 'ゆっくり再開',
+          image: '/static/character/default-girl.png',
+          messages: {
+            idle: 'おかえりなさい。無理せず、まずは小さな1タスクから始めよう。'
+          }
         },
-        badge: {
-          badge: '新バッジ獲得',
-          message: '実績ゲット！頑張りがちゃんと形になったよ🏅',
-          nextAction: '次の実績条件を確認して1歩進める'
+        excited: {
+          label: '最高！',
+          image: '/static/character/default-girl.png',
+          messages: {
+            levelup: 'レベルアップおめでとう！積み重ねが力になってるよ🎉'
+          }
         }
       };
 
+      let characterMood = 'normal';
+      let lastTodos = [];
+
       const loginCard = document.getElementById('loginCard');
       const appSection = document.getElementById('appSection');
+      const heroCard = document.getElementById('heroCard');
       const loginError = document.getElementById('loginError');
       const createError = document.getElementById('createError');
       const todoBody = document.getElementById('todoBody');
@@ -468,12 +488,25 @@
         flashElement(characterStage, 'xp-burst', 950);
       }
 
-      function setCharacterState(type, extraText = '') {
-        const base = reactionTemplates[type] || reactionTemplates.idle;
-        heroStateBadge.textContent = base.badge;
-        const message = extraText ? `${base.message} ${extraText}` : base.message;
+      function chooseCharacterMood({ eventType = 'idle', leveledUp = false, streakDays = 0, inactiveDays = 0, remainingGoals = 0 } = {}) {
+        if (leveledUp || eventType === 'levelup') return 'excited';
+        if (eventType === 'completed' || eventType === 'badge') return 'happy';
+        if (inactiveDays >= 2) return 'tired';
+        if (remainingGoals === 1 || streakDays >= 3) return 'encouraging';
+        return 'normal';
+      }
+
+      function setCharacterState({ eventType = 'idle', mood = 'normal', extraText = '' } = {}) {
+        const safeMood = CHARACTER_MOODS[mood] ? mood : 'normal';
+        const moodConfig = CHARACTER_MOODS[safeMood];
+        characterMood = safeMood;
+        heroCard.dataset.mood = safeMood;
+        heroStateBadge.textContent = moodConfig.label;
+        characterImage.src = moodConfig.image;
+        const fallbackMessage = CHARACTER_MOODS.normal.messages[eventType] || CHARACTER_MOODS.normal.messages.idle;
+        const baseMessage = moodConfig.messages[eventType] || moodConfig.messages.idle || fallbackMessage;
+        const message = extraText ? `${baseMessage} ${extraText}` : baseMessage;
         heroMainMessage.textContent = message;
-        heroNextAction.textContent = base.nextAction;
       }
 
       async function api(path, options = {}) {
@@ -509,6 +542,7 @@
       }
 
       function updateCurrentGoal(todos) {
+        lastTodos = todos;
         const active = todos.filter((t) => !t.completed);
         if (!active.length) {
           heroGoal.textContent = '今日の目標達成！';
@@ -517,6 +551,7 @@
         }
         const top = active[0];
         heroGoal.textContent = `「${top.title}」を完了する`;
+        heroNextAction.textContent = '最優先タスクを1つ完了する';
       }
 
       async function loadMe() {
@@ -617,7 +652,7 @@
           const progress = await api('/api/progress', { method: 'GET' });
           renderProgress(progress);
           maybeShowWelcomeBack(progress);
-          setCharacterState('idle');
+          setCharacterState({ eventType: 'idle', mood: chooseCharacterMood({ remainingGoals: 2 }) });
         } catch {
           state.token = '';
           localStorage.removeItem('token');
@@ -643,7 +678,7 @@
           const progress = await api('/api/progress', { method: 'GET' });
           renderProgress(progress);
           maybeShowWelcomeBack(progress);
-          setCharacterState('idle');
+          setCharacterState({ eventType: 'idle', mood: chooseCharacterMood({ remainingGoals: 2 }) });
         } catch (e) {
           loginError.textContent = e.message;
         }
@@ -670,7 +705,8 @@
           state.page = 1;
           await loadTodos();
           await loadProgress();
-          setCharacterState('created');
+          const remaining = lastTodos.filter((t) => !t.completed).length;
+          setCharacterState({ eventType: 'idle', mood: chooseCharacterMood({ remainingGoals: remaining }) });
         } catch (e) {
           createError.textContent = e.message;
         }
@@ -711,16 +747,27 @@
               showToast(`${r.streak_days}日連続達成！`, 'success', 1800);
             }
             if (r.new_badges?.length) {
-              setCharacterState('badge', `獲得: ${r.new_badges.map((b) => b.name).join('、')}`);
+              setCharacterState({
+                eventType: 'badge',
+                mood: chooseCharacterMood({ eventType: 'badge' }),
+                extraText: `獲得: ${r.new_badges.map((b) => b.name).join('、')}`,
+              });
               showToast(`新バッジ獲得: ${r.new_badges.map((b) => b.name).join('、')}`, 'badge', 2600);
               flashElement(badgeArea, 'flash-highlight', 1200);
             } else if (r.leveled_up) {
-              setCharacterState('levelup', `現在Lv${r.level}`);
+              setCharacterState({
+                eventType: 'levelup',
+                mood: chooseCharacterMood({ eventType: 'levelup', leveledUp: true }),
+                extraText: `現在Lv${r.level}`,
+              });
               showToast(`Lvアップ！ Lv${r.level}`, 'level', 2600);
               flashElement(levelValue, 'level-highlight', 1000);
               flashElement(progressCard, 'flash-highlight', 1200);
             } else {
-              setCharacterState('completed');
+              setCharacterState({
+                eventType: 'completed',
+                mood: chooseCharacterMood({ eventType: 'completed', streakDays: r.streak_days }),
+              });
             }
             triggerCharacterEffect();
           }
@@ -750,7 +797,7 @@
       });
 
       characterImage.addEventListener('error', () => {
-        setCharacterState('idle', '画像が見つからないみたい…設定を確認してね。');
+        setCharacterState({ eventType: 'idle', mood: 'normal', extraText: '画像が見つからないみたい…設定を確認してね。' });
       });
 
       function maybeShowWelcomeBack(progress) {
@@ -761,14 +808,18 @@
         const diff = Math.floor((new Date(today) - new Date(lastSeen)) / (1000 * 60 * 60 * 24));
         if (diff >= 2) {
           showToast('おかえりなさい！また一緒に少しずつ進めよう🌷', 'success', 3000);
-          setCharacterState('idle', '再開できたのがすごいよ。今日は小さく1歩進もう♪');
+          setCharacterState({
+            eventType: 'idle',
+            mood: chooseCharacterMood({ inactiveDays: diff }),
+            extraText: '再開できたのがすごいよ。今日は小さく1歩進もう♪',
+          });
         } else if (progress.login_streak_days >= 2) {
           showToast(`${progress.login_streak_days}日連続ログイン中！`, 'success', 1800);
         }
       }
 
       setTodayToCalendar();
-      setCharacterState('idle');
+      setCharacterState({ eventType: 'idle', mood: 'normal' });
       tryAutoLogin();
     </script>
   </body>

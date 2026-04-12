@@ -112,6 +112,7 @@
         display: block;
         margin: 0 auto;
         background: white;
+        cursor: pointer;
       }
       .main-message {
         position: relative;
@@ -379,45 +380,52 @@
       const CHARACTER_MOODS = {
         normal: {
           label: '通常',
-          image: '/static/character/default-girl.png',
+          image: '/static/character/mood-normal.svg',
           messages: {
             idle: '準備OK！今日はどこから進める？',
             completed: 'ナイス完了！この調子で次もいこう✨'
-          }
+          },
+          talks: ['大丈夫、ひとつずつ進めよう。', 'まずは一番軽いタスクから始めるのがおすすめだよ。']
         },
         happy: {
           label: 'うれしい',
-          image: '/static/character/default-girl.png',
+          image: '/static/character/mood-happy.svg',
           messages: {
             completed: 'すごい！達成できたね。ちゃんと前進してるよ♪',
             badge: '実績ゲット！頑張りが形になってるよ🏅'
-          }
+          },
+          talks: ['やったね！この達成感、最高だよ。', '今日のあなた、すごくいいリズムだよ♪']
         },
         encouraging: {
           label: 'あと少し',
-          image: '/static/character/default-girl.png',
+          image: '/static/character/mood-encouraging.svg',
           messages: {
             idle: 'あと1歩！次のタスクを終わらせれば今日の目標達成だよ。'
-          }
+          },
+          talks: ['あと一歩だよ、いっしょに押し切ろう！', '次の1タスクで今日がもっと気持ちよく終わるよ。']
         },
         tired: {
           label: 'ゆっくり再開',
-          image: '/static/character/default-girl.png',
+          image: '/static/character/mood-tired.svg',
           messages: {
             idle: 'おかえりなさい。無理せず、まずは小さな1タスクから始めよう。'
-          }
+          },
+          talks: ['今日は軽めでOK。再開できたことが一番えらい！', '深呼吸して、1つだけ終わらせよう。']
         },
         excited: {
           label: '最高！',
-          image: '/static/character/default-girl.png',
+          image: '/static/character/mood-excited.svg',
           messages: {
             levelup: 'レベルアップおめでとう！積み重ねが力になってるよ🎉'
-          }
+          },
+          talks: ['今の勢いすごい！もう1ついけるよ！', 'レベルアップ、ほんとにおめでとう🎉']
         }
       };
 
       let characterMood = 'normal';
       let lastTodos = [];
+      let lastEventType = 'idle';
+      let talkIndex = 0;
 
       const loginCard = document.getElementById('loginCard');
       const appSection = document.getElementById('appSection');
@@ -500,6 +508,8 @@
         const safeMood = CHARACTER_MOODS[mood] ? mood : 'normal';
         const moodConfig = CHARACTER_MOODS[safeMood];
         characterMood = safeMood;
+        lastEventType = eventType;
+        talkIndex = 0;
         heroCard.dataset.mood = safeMood;
         heroStateBadge.textContent = moodConfig.label;
         characterImage.src = moodConfig.image;
@@ -507,6 +517,16 @@
         const baseMessage = moodConfig.messages[eventType] || moodConfig.messages.idle || fallbackMessage;
         const message = extraText ? `${baseMessage} ${extraText}` : baseMessage;
         heroMainMessage.textContent = message;
+      }
+
+      function cycleCharacterTalk() {
+        const moodConfig = CHARACTER_MOODS[characterMood] || CHARACTER_MOODS.normal;
+        const talks = moodConfig.talks || [];
+        if (!talks.length) return;
+        const text = talks[talkIndex % talks.length];
+        talkIndex += 1;
+        heroMainMessage.textContent = text;
+        showToast('セリフを切り替えました', 'success', 1200);
       }
 
       async function api(path, options = {}) {
@@ -799,6 +819,7 @@
       characterImage.addEventListener('error', () => {
         setCharacterState({ eventType: 'idle', mood: 'normal', extraText: '画像が見つからないみたい…設定を確認してね。' });
       });
+      characterImage.addEventListener('click', cycleCharacterTalk);
 
       function maybeShowWelcomeBack(progress) {
         const today = new Date().toISOString().slice(0, 10);

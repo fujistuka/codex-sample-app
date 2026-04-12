@@ -20,29 +20,17 @@
         padding: 0 16px;
         background: #fff;
       }
-      h1, h2 { margin: 8px 0 16px; }
+      h1, h2, h3 { margin: 8px 0 16px; }
       .card {
         border: 1px solid var(--border);
-        border-radius: 12px;
+        border-radius: 14px;
         padding: 16px;
         margin-bottom: 16px;
         background: #fff;
       }
-      .row {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-      }
-      .layout {
-        display: grid;
-        grid-template-columns: 1fr 280px;
-        gap: 16px;
-      }
-      .side {
-        position: sticky;
-        top: 16px;
-        align-self: start;
-      }
+      .row { display: flex; gap: 8px; flex-wrap: wrap; }
+      .layout { display: grid; grid-template-columns: 1fr 320px; gap: 16px; }
+      .side { position: sticky; top: 16px; align-self: start; }
       input, select, button {
         border: 1px solid var(--border);
         border-radius: 8px;
@@ -62,17 +50,51 @@
       .hidden { display: none; }
       .calendar-inline { width: 220px; }
 
-      .character-box {
-        background: var(--soft);
+      .hero {
+        border: 1px solid #dbeafe;
+        background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
       }
-      .character-image {
-        width: 140px;
-        height: 140px;
+      .hero-grid {
+        display: grid;
+        grid-template-columns: 1fr 220px;
+        gap: 14px;
+        align-items: center;
+      }
+      .hero-badge {
+        display: inline-block;
+        border: 1px solid #bfdbfe;
+        background: #eff6ff;
+        color: #1d4ed8;
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 12px;
+      }
+      .hero-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+      .hero-box {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: #fff;
+        padding: 10px;
+      }
+      .hero-label { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+      .hero-value { font-size: 14px; }
+      .character-stage {
+        position: relative;
+        transition: transform 220ms ease, box-shadow 220ms ease;
+      }
+      .character-stage.celebrate {
+        transform: translateY(-2px) scale(1.02);
+        box-shadow: 0 8px 20px rgba(37, 99, 235, 0.14);
+      }
+      .character-image-main {
+        width: 180px;
+        height: 180px;
         object-fit: cover;
-        border-radius: 12px;
+        border-radius: 16px;
         border: 1px solid var(--border);
         display: block;
-        margin: 0 auto 10px;
+        margin: 0 auto 8px;
+        background: white;
       }
       .speech {
         position: relative;
@@ -101,6 +123,7 @@
         border-style: solid;
         border-color: transparent transparent var(--border) transparent;
       }
+
       .progress {
         height: 10px;
         background: #eef2ff;
@@ -108,16 +131,11 @@
         overflow: hidden;
         margin: 8px 0;
       }
-      .progress > span {
-        display: block;
-        height: 100%;
-        background: var(--accent);
-      }
-      .badge-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 8px;
-      }
+      .progress > span { display: block; height: 100%; background: var(--accent); }
+      .status-list { margin: 8px 0; padding: 0; list-style: none; }
+      .status-list li { margin: 4px 0; font-size: 13px; }
+
+      .badge-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
       .badge-card {
         border: 1px solid var(--border);
         border-radius: 10px;
@@ -126,12 +144,8 @@
         font-size: 12px;
       }
       .badge-icon { font-size: 18px; margin-right: 6px; }
-      .calendar-grid {
-        display: grid;
-        grid-template-columns: repeat(7, 1fr);
-        gap: 4px;
-        margin-top: 8px;
-      }
+
+      .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 8px; }
       .calendar-cell {
         height: 24px;
         border-radius: 6px;
@@ -149,9 +163,11 @@
         font-weight: 600;
       }
 
-      @media (max-width: 900px) {
+      @media (max-width: 960px) {
         .layout { grid-template-columns: 1fr; }
         .side { position: static; }
+        .hero-grid { grid-template-columns: 1fr; }
+        .hero-meta { grid-template-columns: 1fr; }
       }
     </style>
   </head>
@@ -176,6 +192,33 @@
     </section>
 
     <section id="appSection" class="hidden">
+      <section class="card hero">
+        <span id="heroStateBadge" class="hero-badge">今日も一歩ずつ</span>
+        <div class="hero-grid">
+          <div>
+            <h2 style="margin-top: 8px;">キャラクターと進める今日のタスク</h2>
+            <div class="hero-meta">
+              <div class="hero-box">
+                <p class="hero-label">今日のひとこと</p>
+                <p id="dailyQuote" class="hero-value">小さな達成を積み上げれば、ちゃんと前に進めるよ♪</p>
+              </div>
+              <div class="hero-box">
+                <p class="hero-label">現在の目標</p>
+                <p id="currentGoal" class="hero-value">まずは今日の最初のタスクを1つ完了しよう！</p>
+              </div>
+            </div>
+            <div class="hero-box" style="margin-top: 8px;">
+              <p class="hero-label">キャラクターの反応</p>
+              <p id="heroReaction" class="hero-value">準備OK！一緒に始めよう✨</p>
+            </div>
+          </div>
+          <div id="characterStage" class="character-stage">
+            <img id="characterImage" class="character-image-main" src="/static/character/default-girl.svg" alt="応援キャラクター" />
+            <div id="speechBubble" class="speech">今日も一歩ずつ進めよう♪</div>
+          </div>
+        </div>
+      </section>
+
       <div class="layout">
         <main>
           <div class="card">
@@ -255,13 +298,16 @@
 
         <aside class="side">
           <section class="card">
-            <h2>報酬ステータス</h2>
+            <h2>進捗ダッシュボード</h2>
             <p style="margin:0;">Lv <strong id="levelValue">1</strong> / XP <strong id="xpValue">0</strong></p>
             <div class="progress"><span id="xpBar" style="width:0%"></span></div>
             <p id="nextXpInfo" class="muted">次のレベルまで 100 XP</p>
-            <p id="loginStreakInfo" class="muted">連続ログイン: 0日</p>
-            <p id="streakInfo" class="muted">連続達成日数: 0日</p>
+            <ul class="status-list">
+              <li id="loginStreakInfo">連続ログイン: 0日</li>
+              <li id="streakInfo">連続達成日数: 0日</li>
+            </ul>
             <p id="rewardFlash" class="muted"></p>
+
             <div>
               <p id="badgeSummary" class="muted" style="margin-bottom:6px;">バッジ 0/0</p>
               <div id="badgeList" class="badge-grid"></div>
@@ -272,20 +318,15 @@
             </div>
           </section>
 
-          <section class="card character-box">
-            <h2>応援キャラクター</h2>
-            <img id="characterImage" class="character-image" src="/static/character/default-girl.svg" alt="応援キャラクター" />
-            <div id="speechBubble" class="speech">今日も一歩ずつ進めよう♪</div>
-            <div class="row" style="margin-top: 10px;">
-              <button id="randomMessageBtn">セリフ更新</button>
-            </div>
-            <hr style="border: none; border-top: 1px solid var(--border); margin: 12px 0;" />
+          <section class="card" style="background: var(--soft);">
+            <h3 style="margin-top:0;">キャラクター案内</h3>
             <p class="muted" style="margin-bottom: 6px;">画像フォルダ指定（URLパス）</p>
             <input id="imageFolder" value="/static/character" />
             <p class="muted" style="margin: 6px 0;">画像ファイル名</p>
             <input id="imageFile" value="default-girl.svg" />
             <div class="row" style="margin-top: 8px;">
               <button id="applyImageBtn">画像を適用</button>
+              <button id="randomMessageBtn">セリフ更新</button>
             </div>
             <p class="muted">例: `/static/character` + `my-girl.png`</p>
           </section>
@@ -308,6 +349,34 @@
         '今日も頑張ってて素敵だよ！終わったら自分をほめようね♪'
       ];
 
+      const reactionTemplates = {
+        idle: {
+          badge: '今日も一歩ずつ',
+          quote: '焦らなくて大丈夫。1タスクずつ片付けよう！',
+          reaction: '準備OK！今日はどこから進める？'
+        },
+        created: {
+          badge: '計画完了',
+          quote: 'タスクを言語化した時点で、もう半分進んでるよ。',
+          reaction: 'いいスタート！次は1つ完了を目指そう♪'
+        },
+        completed: {
+          badge: '達成できた！',
+          quote: '完了ボタンを押したその瞬間、ちゃんと成長してる。',
+          reaction: 'ナイス完了！この調子で次もいこう✨'
+        },
+        levelup: {
+          badge: 'レベルアップ！',
+          quote: '積み重ねが、あなたの実力として見える形になったね。',
+          reaction: 'すごい！新しいレベルに到達したよ🎉'
+        },
+        badge: {
+          badge: '新バッジ獲得',
+          quote: '成果は見える化すると、もっと嬉しくなる。',
+          reaction: '実績ゲット！頑張りがちゃんと形になったよ🏅'
+        }
+      };
+
       const loginCard = document.getElementById('loginCard');
       const appSection = document.getElementById('appSection');
       const loginError = document.getElementById('loginError');
@@ -316,6 +385,13 @@
       const pageInfo = document.getElementById('pageInfo');
       const me = document.getElementById('me');
       const titleCalendar = document.getElementById('titleCalendar');
+
+      const heroStateBadge = document.getElementById('heroStateBadge');
+      const dailyQuote = document.getElementById('dailyQuote');
+      const currentGoal = document.getElementById('currentGoal');
+      const heroReaction = document.getElementById('heroReaction');
+      const characterStage = document.getElementById('characterStage');
+
       const speechBubble = document.getElementById('speechBubble');
       const levelValue = document.getElementById('levelValue');
       const xpValue = document.getElementById('xpValue');
@@ -339,9 +415,27 @@
         titleCalendar.value = `${y}-${m}-${d}`;
       }
 
+      function triggerCharacterEffect() {
+        characterStage.classList.remove('celebrate');
+        requestAnimationFrame(() => {
+          characterStage.classList.add('celebrate');
+          setTimeout(() => characterStage.classList.remove('celebrate'), 500);
+        });
+      }
+
+      function setCharacterState(type, extraText = '') {
+        const base = reactionTemplates[type] || reactionTemplates.idle;
+        heroStateBadge.textContent = base.badge;
+        dailyQuote.textContent = base.quote;
+        const message = extraText ? `${base.reaction} ${extraText}` : base.reaction;
+        heroReaction.textContent = message;
+        speechBubble.textContent = message;
+      }
+
       function randomCheer() {
         const msg = cheerMessages[Math.floor(Math.random() * cheerMessages.length)];
         speechBubble.textContent = msg;
+        heroReaction.textContent = msg;
       }
 
       function applyCharacterImage() {
@@ -383,6 +477,16 @@
         return sp.toString();
       }
 
+      function updateCurrentGoal(todos) {
+        const active = todos.filter((t) => !t.completed);
+        if (!active.length) {
+          currentGoal.textContent = '今日は完了済み！新しい小さな目標を作ろう。';
+          return;
+        }
+        const top = active[0];
+        currentGoal.textContent = `次の目標: 「${top.title}」を完了する`; 
+      }
+
       async function loadMe() {
         const data = await api('/api/me', { method: 'GET' });
         me.textContent = `ログイン中: ${data.username}`;
@@ -395,7 +499,7 @@
 
         for (const todo of data.items) {
           const tr = document.createElement('tr');
-          const tags = (todo.tags || []).map(t => `<span class="chip">${t}</span>`).join('');
+          const tags = (todo.tags || []).map((t) => `<span class="chip">${t}</span>`).join('');
           tr.innerHTML = `
             <td>${todo.completed ? '✅' : '⬜'}</td>
             <td class="${todo.completed ? 'done' : ''}">${todo.title}</td>
@@ -411,6 +515,7 @@
           todoBody.appendChild(tr);
         }
 
+        updateCurrentGoal(data.items || []);
         state.page = data.pagination.page;
         state.totalPages = data.pagination.total_pages;
         pageInfo.textContent = `${data.pagination.page} / ${data.pagination.total_pages} (全${data.pagination.total}件)`;
@@ -441,12 +546,14 @@
         const currentInLevel = progress.total_xp % 100;
         xpBar.style.width = `${currentInLevel}%`;
         badgeSummary.textContent = `バッジ ${progress.badge_summary.earned}/${progress.badge_summary.total}`;
+
         badgeList.innerHTML = '';
         if (!progress.badges.length) {
           badgeList.innerHTML = '<span class="muted">まだバッジはありません</span>';
           renderAchievementCalendar(progress.achievement_dates);
           return;
         }
+
         progress.badges.forEach((b) => {
           const card = document.createElement('div');
           card.className = 'badge-card';
@@ -476,7 +583,7 @@
           showApp(true);
           await loadTodos();
           await loadProgress();
-          randomCheer();
+          setCharacterState('idle');
         } catch {
           state.token = '';
           localStorage.removeItem('token');
@@ -500,7 +607,7 @@
           state.page = 1;
           await loadTodos();
           await loadProgress();
-          randomCheer();
+          setCharacterState('idle');
         } catch (e) {
           loginError.textContent = e.message;
         }
@@ -527,7 +634,7 @@
           state.page = 1;
           await loadTodos();
           await loadProgress();
-          randomCheer();
+          setCharacterState('created');
         } catch (e) {
           createError.textContent = e.message;
         }
@@ -563,14 +670,16 @@
             const r = result.reward;
             rewardFlash.textContent = `+${r.gained_xp} XP（倍率 x${r.multiplier.toFixed(1)} / 連続${r.streak_days}日）`;
             if (r.new_badges?.length) {
-              speechBubble.textContent = `新しい実績ゲット！${r.new_badges.map((b) => b.name).join('、')}`;
+              setCharacterState('badge', `獲得: ${r.new_badges.map((b) => b.name).join('、')}`);
             } else if (r.leveled_up) {
-              speechBubble.textContent = `レベルアップ！ Lv${r.level} になったよ♪`;
+              setCharacterState('levelup', `現在Lv${r.level}`);
+            } else {
+              setCharacterState('completed');
             }
+            triggerCharacterEffect();
           }
           await loadTodos();
           await loadProgress();
-          randomCheer();
           return;
         }
 
@@ -579,7 +688,6 @@
           await api(`/api/todos/${id}`, { method: 'DELETE' });
           await loadTodos();
           await loadProgress();
-          randomCheer();
           return;
         }
 
@@ -592,18 +700,17 @@
           });
           await loadTodos();
           await loadProgress();
-          randomCheer();
         }
       });
 
       document.getElementById('randomMessageBtn').addEventListener('click', randomCheer);
       document.getElementById('applyImageBtn').addEventListener('click', applyCharacterImage);
       characterImage.addEventListener('error', () => {
-        speechBubble.textContent = '画像が見つからないみたい…フォルダとファイル名を確認してね！';
+        setCharacterState('idle', '画像が見つからないみたい…設定を確認してね。');
       });
 
       setTodayToCalendar();
-      randomCheer();
+      setCharacterState('idle');
       tryAutoLogin();
     </script>
   </body>

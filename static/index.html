@@ -54,12 +54,7 @@
         border: 1px solid #dbeafe;
         background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
       }
-      .hero-grid {
-        display: grid;
-        grid-template-columns: 1fr 220px;
-        gap: 14px;
-        align-items: center;
-      }
+      .hero-grid { display: grid; grid-template-columns: 38% 62%; gap: 18px; align-items: center; }
       .hero-badge {
         display: inline-block;
         border: 1px solid #bfdbfe;
@@ -69,7 +64,7 @@
         padding: 4px 10px;
         font-size: 12px;
       }
-      .hero-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+      .hero-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
       .hero-box {
         border: 1px solid var(--border);
         border-radius: 10px;
@@ -87,41 +82,34 @@
         box-shadow: 0 8px 20px rgba(37, 99, 235, 0.14);
       }
       .character-image-main {
-        width: 180px;
-        height: 180px;
+        width: 220px;
+        height: 220px;
         object-fit: cover;
         border-radius: 16px;
         border: 1px solid var(--border);
         display: block;
-        margin: 0 auto 8px;
+        margin: 0 auto;
         background: white;
       }
-      .speech {
+      .main-message {
         position: relative;
         background: white;
-        border: 1px solid var(--border);
+        border: 1px solid #bfdbfe;
         border-radius: 12px;
-        padding: 10px;
-        font-size: 13px;
-        line-height: 1.5;
+        padding: 14px;
+        font-size: 17px;
+        line-height: 1.7;
+        margin-top: 10px;
       }
-      .speech::after {
+      .main-message::after {
         content: '';
         position: absolute;
-        left: 18px;
+        left: -8px;
         top: -8px;
-        border-width: 0 8px 8px 8px;
+        border-width: 8px;
         border-style: solid;
-        border-color: transparent transparent white transparent;
-      }
-      .speech::before {
-        content: '';
-        position: absolute;
-        left: 17px;
-        top: -10px;
-        border-width: 0 9px 9px 9px;
-        border-style: solid;
-        border-color: transparent transparent var(--border) transparent;
+        border-color: transparent #bfdbfe #bfdbfe transparent;
+        transform: rotate(45deg);
       }
 
       .progress {
@@ -168,6 +156,7 @@
         .side { position: static; }
         .hero-grid { grid-template-columns: 1fr; }
         .hero-meta { grid-template-columns: 1fr; }
+        .character-image-main { width: 180px; height: 180px; }
       }
     </style>
   </head>
@@ -195,26 +184,22 @@
       <section class="card hero">
         <span id="heroStateBadge" class="hero-badge">今日も一歩ずつ</span>
         <div class="hero-grid">
-          <div>
-            <h2 style="margin-top: 8px;">キャラクターと進める今日のタスク</h2>
-            <div class="hero-meta">
-              <div class="hero-box">
-                <p class="hero-label">今日のひとこと</p>
-                <p id="dailyQuote" class="hero-value">小さな達成を積み上げれば、ちゃんと前に進めるよ♪</p>
-              </div>
-              <div class="hero-box">
-                <p class="hero-label">現在の目標</p>
-                <p id="currentGoal" class="hero-value">まずは今日の最初のタスクを1つ完了しよう！</p>
-              </div>
-            </div>
-            <div class="hero-box" style="margin-top: 8px;">
-              <p class="hero-label">キャラクターの反応</p>
-              <p id="heroReaction" class="hero-value">準備OK！一緒に始めよう✨</p>
-            </div>
-          </div>
           <div id="characterStage" class="character-stage">
             <img id="characterImage" class="character-image-main" src="/static/character/default-girl.svg" alt="応援キャラクター" />
-            <div id="speechBubble" class="speech">今日も一歩ずつ進めよう♪</div>
+          </div>
+          <div>
+            <h2 style="margin-top: 8px;">キャラクターと進める今日のタスク</h2>
+            <p id="heroMainMessage" class="main-message">準備OK！まずは1つ完了しよう✨</p>
+            <div class="hero-meta">
+              <div class="hero-box">
+                <p class="hero-label">今日の目標</p>
+                <p id="heroGoal" class="hero-value">1タスク完了</p>
+              </div>
+              <div class="hero-box">
+                <p class="hero-label">次の一歩</p>
+                <p id="heroNextAction" class="hero-value">最優先タスクを選んで完了する</p>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -318,18 +303,6 @@
             </div>
           </section>
 
-          <section class="card" style="background: var(--soft);">
-            <h3 style="margin-top:0;">キャラクター案内</h3>
-            <p class="muted" style="margin-bottom: 6px;">画像フォルダ指定（URLパス）</p>
-            <input id="imageFolder" value="/static/character" />
-            <p class="muted" style="margin: 6px 0;">画像ファイル名</p>
-            <input id="imageFile" value="default-girl.svg" />
-            <div class="row" style="margin-top: 8px;">
-              <button id="applyImageBtn">画像を適用</button>
-              <button id="randomMessageBtn">セリフ更新</button>
-            </div>
-            <p class="muted">例: `/static/character` + `my-girl.png`</p>
-          </section>
         </aside>
       </div>
     </section>
@@ -341,39 +314,31 @@
         totalPages: 1,
       };
 
-      const cheerMessages = [
-        'すごい！今日のタスク、きっと気持ちよく片付くよ♪',
-        'えらいえらいっ！小さな一歩が大きな成果になるよ！',
-        'その調子っ♪ ひとつ終わるたびに未来が軽くなるね！',
-        'あなたなら大丈夫！いっしょにコツコツ進めよう！',
-        '今日も頑張ってて素敵だよ！終わったら自分をほめようね♪'
-      ];
-
       const reactionTemplates = {
         idle: {
           badge: '今日も一歩ずつ',
-          quote: '焦らなくて大丈夫。1タスクずつ片付けよう！',
-          reaction: '準備OK！今日はどこから進める？'
+          message: '準備OK！今日はどこから進める？',
+          nextAction: '最優先タスクを1つ完了する'
         },
         created: {
           badge: '計画完了',
-          quote: 'タスクを言語化した時点で、もう半分進んでるよ。',
-          reaction: 'いいスタート！次は1つ完了を目指そう♪'
+          message: 'いいスタート！次は1つ完了を目指そう♪',
+          nextAction: '作成したタスクを1つ完了する'
         },
         completed: {
           badge: '達成できた！',
-          quote: '完了ボタンを押したその瞬間、ちゃんと成長してる。',
-          reaction: 'ナイス完了！この調子で次もいこう✨'
+          message: 'ナイス完了！この調子で次もいこう✨',
+          nextAction: '次の未完了タスクに着手する'
         },
         levelup: {
           badge: 'レベルアップ！',
-          quote: '積み重ねが、あなたの実力として見える形になったね。',
-          reaction: 'すごい！新しいレベルに到達したよ🎉'
+          message: 'すごい！新しいレベルに到達したよ🎉',
+          nextAction: '勢いのままもう1タスク完了する'
         },
         badge: {
           badge: '新バッジ獲得',
-          quote: '成果は見える化すると、もっと嬉しくなる。',
-          reaction: '実績ゲット！頑張りがちゃんと形になったよ🏅'
+          message: '実績ゲット！頑張りがちゃんと形になったよ🏅',
+          nextAction: '次の実績条件を確認して1歩進める'
         }
       };
 
@@ -387,12 +352,10 @@
       const titleCalendar = document.getElementById('titleCalendar');
 
       const heroStateBadge = document.getElementById('heroStateBadge');
-      const dailyQuote = document.getElementById('dailyQuote');
-      const currentGoal = document.getElementById('currentGoal');
-      const heroReaction = document.getElementById('heroReaction');
+      const heroMainMessage = document.getElementById('heroMainMessage');
+      const heroGoal = document.getElementById('heroGoal');
+      const heroNextAction = document.getElementById('heroNextAction');
       const characterStage = document.getElementById('characterStage');
-
-      const speechBubble = document.getElementById('speechBubble');
       const levelValue = document.getElementById('levelValue');
       const xpValue = document.getElementById('xpValue');
       const xpBar = document.getElementById('xpBar');
@@ -403,8 +366,6 @@
       const badgeSummary = document.getElementById('badgeSummary');
       const badgeList = document.getElementById('badgeList');
       const achievementCalendar = document.getElementById('achievementCalendar');
-      const imageFolder = document.getElementById('imageFolder');
-      const imageFile = document.getElementById('imageFile');
       const characterImage = document.getElementById('characterImage');
 
       function setTodayToCalendar() {
@@ -426,23 +387,9 @@
       function setCharacterState(type, extraText = '') {
         const base = reactionTemplates[type] || reactionTemplates.idle;
         heroStateBadge.textContent = base.badge;
-        dailyQuote.textContent = base.quote;
-        const message = extraText ? `${base.reaction} ${extraText}` : base.reaction;
-        heroReaction.textContent = message;
-        speechBubble.textContent = message;
-      }
-
-      function randomCheer() {
-        const msg = cheerMessages[Math.floor(Math.random() * cheerMessages.length)];
-        speechBubble.textContent = msg;
-        heroReaction.textContent = msg;
-      }
-
-      function applyCharacterImage() {
-        const folder = imageFolder.value.trim().replace(/\/$/, '');
-        const file = imageFile.value.trim();
-        if (!folder || !file) return;
-        characterImage.src = `${folder}/${file}`;
+        const message = extraText ? `${base.message} ${extraText}` : base.message;
+        heroMainMessage.textContent = message;
+        heroNextAction.textContent = base.nextAction;
       }
 
       async function api(path, options = {}) {
@@ -480,11 +427,12 @@
       function updateCurrentGoal(todos) {
         const active = todos.filter((t) => !t.completed);
         if (!active.length) {
-          currentGoal.textContent = '今日は完了済み！新しい小さな目標を作ろう。';
+          heroGoal.textContent = '今日の目標達成！';
+          heroNextAction.textContent = '明日のために新しいタスクを1つ追加する';
           return;
         }
         const top = active[0];
-        currentGoal.textContent = `次の目標: 「${top.title}」を完了する`; 
+        heroGoal.textContent = `「${top.title}」を完了する`;
       }
 
       async function loadMe() {
@@ -703,8 +651,6 @@
         }
       });
 
-      document.getElementById('randomMessageBtn').addEventListener('click', randomCheer);
-      document.getElementById('applyImageBtn').addEventListener('click', applyCharacterImage);
       characterImage.addEventListener('error', () => {
         setCharacterState('idle', '画像が見つからないみたい…設定を確認してね。');
       });

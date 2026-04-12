@@ -385,7 +385,11 @@
             idle: '準備OK！今日はどこから進める？',
             completed: 'ナイス完了！この調子で次もいこう✨'
           },
-          talks: ['大丈夫、ひとつずつ進めよう。', 'まずは一番軽いタスクから始めるのがおすすめだよ。']
+          talks: [
+            { text: '大丈夫、ひとつずつ進めよう。', mood: 'normal' },
+            { text: 'まずは一番軽いタスクから始めるのがおすすめだよ。', mood: 'normal' },
+            { text: '春の空気って気持ちいいね。短い散歩で気分転換してから再開しよう。', mood: 'encouraging' }
+          ]
         },
         happy: {
           label: 'うれしい',
@@ -394,7 +398,11 @@
             completed: 'すごい！達成できたね。ちゃんと前進してるよ♪',
             badge: '実績ゲット！頑張りが形になってるよ🏅'
           },
-          talks: ['やったね！この達成感、最高だよ。', '今日のあなた、すごくいいリズムだよ♪']
+          talks: [
+            { text: 'やったね！この達成感、最高だよ。', mood: 'happy' },
+            { text: '今日のあなた、すごくいいリズムだよ♪', mood: 'happy' },
+            { text: '桜の季節みたいに、少しずつ成果が咲いてきたね。', mood: 'happy' }
+          ]
         },
         encouraging: {
           label: 'あと少し',
@@ -402,7 +410,11 @@
           messages: {
             idle: 'あと1歩！次のタスクを終わらせれば今日の目標達成だよ。'
           },
-          talks: ['あと一歩だよ、いっしょに押し切ろう！', '次の1タスクで今日がもっと気持ちよく終わるよ。']
+          talks: [
+            { text: 'あと一歩だよ、いっしょに押し切ろう！', mood: 'encouraging' },
+            { text: '次の1タスクで今日がもっと気持ちよく終わるよ。', mood: 'encouraging' },
+            { text: '新生活の時期は疲れやすいから、短い集中を重ねよう。', mood: 'normal' }
+          ]
         },
         tired: {
           label: 'ゆっくり再開',
@@ -410,7 +422,11 @@
           messages: {
             idle: 'おかえりなさい。無理せず、まずは小さな1タスクから始めよう。'
           },
-          talks: ['今日は軽めでOK。再開できたことが一番えらい！', '深呼吸して、1つだけ終わらせよう。']
+          talks: [
+            { text: '今日は軽めでOK。再開できたことが一番えらい！', mood: 'tired' },
+            { text: '深呼吸して、1つだけ終わらせよう。', mood: 'tired' },
+            { text: '花粉がつらい日は、無理せず室内でできるタスクを選ぼう。', mood: 'normal' }
+          ]
         },
         excited: {
           label: '最高！',
@@ -418,7 +434,11 @@
           messages: {
             levelup: 'レベルアップおめでとう！積み重ねが力になってるよ🎉'
           },
-          talks: ['今の勢いすごい！もう1ついけるよ！', 'レベルアップ、ほんとにおめでとう🎉']
+          talks: [
+            { text: '今の勢いすごい！もう1ついけるよ！', mood: 'excited' },
+            { text: 'レベルアップ、ほんとにおめでとう🎉', mood: 'excited' },
+            { text: 'ゴールデンウィーク前に、やることを軽く整理しておこう。', mood: 'encouraging' }
+          ]
         }
       };
 
@@ -504,15 +524,20 @@
         return 'normal';
       }
 
-      function setCharacterState({ eventType = 'idle', mood = 'normal', extraText = '' } = {}) {
+      function applyCharacterMood(mood) {
         const safeMood = CHARACTER_MOODS[mood] ? mood : 'normal';
         const moodConfig = CHARACTER_MOODS[safeMood];
         characterMood = safeMood;
-        lastEventType = eventType;
-        talkIndex = 0;
         heroCard.dataset.mood = safeMood;
         heroStateBadge.textContent = moodConfig.label;
         characterImage.src = moodConfig.image;
+        return moodConfig;
+      }
+
+      function setCharacterState({ eventType = 'idle', mood = 'normal', extraText = '' } = {}) {
+        const moodConfig = applyCharacterMood(mood);
+        lastEventType = eventType;
+        talkIndex = 0;
         const fallbackMessage = CHARACTER_MOODS.normal.messages[eventType] || CHARACTER_MOODS.normal.messages.idle;
         const baseMessage = moodConfig.messages[eventType] || moodConfig.messages.idle || fallbackMessage;
         const message = extraText ? `${baseMessage} ${extraText}` : baseMessage;
@@ -523,10 +548,12 @@
         const moodConfig = CHARACTER_MOODS[characterMood] || CHARACTER_MOODS.normal;
         const talks = moodConfig.talks || [];
         if (!talks.length) return;
-        const text = talks[talkIndex % talks.length];
+        const item = talks[talkIndex % talks.length];
+        const text = typeof item === 'string' ? item : item.text;
+        const nextMood = typeof item === 'string' ? characterMood : (item.mood || characterMood);
         talkIndex += 1;
+        applyCharacterMood(nextMood);
         heroMainMessage.textContent = text;
-        showToast('セリフを切り替えました', 'success', 1200);
       }
 
       async function api(path, options = {}) {

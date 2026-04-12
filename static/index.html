@@ -81,6 +81,24 @@
         transform: translateY(-2px) scale(1.02);
         box-shadow: 0 8px 20px rgba(37, 99, 235, 0.14);
       }
+      .character-stage.xp-burst::after {
+        content: attr(data-xp);
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+        color: #1d4ed8;
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 12px;
+        animation: floatUp 900ms ease forwards;
+      }
+      @keyframes floatUp {
+        from { transform: translateY(8px); opacity: 0; }
+        20% { opacity: 1; }
+        to { transform: translateY(-14px); opacity: 0; }
+      }
       .character-image-main {
         width: 220px;
         height: 220px;
@@ -132,6 +150,45 @@
         font-size: 12px;
       }
       .badge-icon { font-size: 18px; margin-right: 6px; }
+      .flash-highlight {
+        animation: flashBg 1000ms ease;
+      }
+      @keyframes flashBg {
+        0% { box-shadow: 0 0 0 rgba(37, 99, 235, 0); }
+        30% { box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.16); }
+        100% { box-shadow: 0 0 0 rgba(37, 99, 235, 0); }
+      }
+      .level-highlight {
+        animation: levelPulse 900ms ease;
+      }
+      @keyframes levelPulse {
+        0% { color: var(--text); transform: scale(1); }
+        40% { color: #1d4ed8; transform: scale(1.08); }
+        100% { color: var(--text); transform: scale(1); }
+      }
+
+      .toast-layer {
+        position: fixed;
+        right: 16px;
+        bottom: 16px;
+        display: grid;
+        gap: 8px;
+        z-index: 50;
+      }
+      .toast {
+        min-width: 220px;
+        max-width: 320px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: #fff;
+        color: var(--text);
+        padding: 10px 12px;
+        font-size: 13px;
+        box-shadow: 0 6px 16px rgba(17, 24, 39, 0.08);
+      }
+      .toast.success { border-color: #bfdbfe; background: #f8fbff; }
+      .toast.level { border-color: #93c5fd; background: #eff6ff; }
+      .toast.badge { border-color: #c4b5fd; background: #f5f3ff; }
 
       .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 8px; }
       .calendar-cell {
@@ -282,7 +339,7 @@
         </main>
 
         <aside class="side">
-          <section class="card">
+          <section id="progressCard" class="card">
             <h2>進捗ダッシュボード</h2>
             <p style="margin:0;">Lv <strong id="levelValue">1</strong> / XP <strong id="xpValue">0</strong></p>
             <div class="progress"><span id="xpBar" style="width:0%"></span></div>
@@ -293,7 +350,7 @@
             </ul>
             <p id="rewardFlash" class="muted"></p>
 
-            <div>
+            <div id="badgeArea">
               <p id="badgeSummary" class="muted" style="margin-bottom:6px;">バッジ 0/0</p>
               <div id="badgeList" class="badge-grid"></div>
             </div>
@@ -306,6 +363,7 @@
         </aside>
       </div>
     </section>
+    <div id="toastLayer" class="toast-layer" aria-live="polite"></div>
 
     <script>
       const state = {
@@ -356,6 +414,8 @@
       const heroGoal = document.getElementById('heroGoal');
       const heroNextAction = document.getElementById('heroNextAction');
       const characterStage = document.getElementById('characterStage');
+      const progressCard = document.getElementById('progressCard');
+      const badgeArea = document.getElementById('badgeArea');
       const levelValue = document.getElementById('levelValue');
       const xpValue = document.getElementById('xpValue');
       const xpBar = document.getElementById('xpBar');
@@ -367,6 +427,7 @@
       const badgeList = document.getElementById('badgeList');
       const achievementCalendar = document.getElementById('achievementCalendar');
       const characterImage = document.getElementById('characterImage');
+      const toastLayer = document.getElementById('toastLayer');
 
       function setTodayToCalendar() {
         const now = new Date();
@@ -382,6 +443,29 @@
           characterStage.classList.add('celebrate');
           setTimeout(() => characterStage.classList.remove('celebrate'), 500);
         });
+      }
+
+      function flashElement(element, className, duration = 900) {
+        element.classList.remove(className);
+        requestAnimationFrame(() => {
+          element.classList.add(className);
+          setTimeout(() => element.classList.remove(className), duration);
+        });
+      }
+
+      function showToast(message, kind = 'success', duration = 2200) {
+        const toast = document.createElement('div');
+        toast.className = `toast ${kind}`;
+        toast.textContent = message;
+        toastLayer.appendChild(toast);
+        setTimeout(() => {
+          toast.remove();
+        }, duration);
+      }
+
+      function showXpBurst(text) {
+        characterStage.setAttribute('data-xp', text);
+        flashElement(characterStage, 'xp-burst', 950);
       }
 
       function setCharacterState(type, extraText = '') {
@@ -530,7 +614,9 @@
           await loadMe();
           showApp(true);
           await loadTodos();
-          await loadProgress();
+          const progress = await api('/api/progress', { method: 'GET' });
+          renderProgress(progress);
+          maybeShowWelcomeBack(progress);
           setCharacterState('idle');
         } catch {
           state.token = '';
@@ -554,7 +640,9 @@
           showApp(true);
           state.page = 1;
           await loadTodos();
-          await loadProgress();
+          const progress = await api('/api/progress', { method: 'GET' });
+          renderProgress(progress);
+          maybeShowWelcomeBack(progress);
           setCharacterState('idle');
         } catch (e) {
           loginError.textContent = e.message;
@@ -617,10 +705,20 @@
           if (result.reward) {
             const r = result.reward;
             rewardFlash.textContent = `+${r.gained_xp} XP（倍率 x${r.multiplier.toFixed(1)} / 連続${r.streak_days}日）`;
+            showXpBurst(`+${r.gained_xp}XP`);
+            showToast(`タスク完了！ +${r.gained_xp}XP`, 'success');
+            if (r.streak_days >= 2) {
+              showToast(`${r.streak_days}日連続達成！`, 'success', 1800);
+            }
             if (r.new_badges?.length) {
               setCharacterState('badge', `獲得: ${r.new_badges.map((b) => b.name).join('、')}`);
+              showToast(`新バッジ獲得: ${r.new_badges.map((b) => b.name).join('、')}`, 'badge', 2600);
+              flashElement(badgeArea, 'flash-highlight', 1200);
             } else if (r.leveled_up) {
               setCharacterState('levelup', `現在Lv${r.level}`);
+              showToast(`Lvアップ！ Lv${r.level}`, 'level', 2600);
+              flashElement(levelValue, 'level-highlight', 1000);
+              flashElement(progressCard, 'flash-highlight', 1200);
             } else {
               setCharacterState('completed');
             }
@@ -654,6 +752,20 @@
       characterImage.addEventListener('error', () => {
         setCharacterState('idle', '画像が見つからないみたい…設定を確認してね。');
       });
+
+      function maybeShowWelcomeBack(progress) {
+        const today = new Date().toISOString().slice(0, 10);
+        const lastSeen = localStorage.getItem('last_seen_date');
+        localStorage.setItem('last_seen_date', today);
+        if (!lastSeen) return;
+        const diff = Math.floor((new Date(today) - new Date(lastSeen)) / (1000 * 60 * 60 * 24));
+        if (diff >= 2) {
+          showToast('おかえりなさい！また一緒に少しずつ進めよう🌷', 'success', 3000);
+          setCharacterState('idle', '再開できたのがすごいよ。今日は小さく1歩進もう♪');
+        } else if (progress.login_streak_days >= 2) {
+          showToast(`${progress.login_streak_days}日連続ログイン中！`, 'success', 1800);
+        }
+      }
 
       setTodayToCalendar();
       setCharacterState('idle');

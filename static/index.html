@@ -138,6 +138,61 @@
         border: 1px solid #dbeafe;
         background: #f9fbff;
       }
+      .mission-focus {
+        border: 1px solid #bfdbfe;
+        border-radius: 12px;
+        background: #ffffff;
+        padding: 12px;
+      }
+      .mission-focus.completed {
+        border-color: #86efac;
+        background: #f0fdf4;
+      }
+      .mission-meta {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin: 10px 0;
+      }
+      .mission-label { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+      .mission-value { font-size: 14px; }
+      .mission-progress-track {
+        height: 8px;
+        border-radius: 999px;
+        background: #e5e7eb;
+        overflow: hidden;
+        margin-top: 6px;
+      }
+      .mission-progress-track > span {
+        display: block;
+        height: 100%;
+        background: #2563eb;
+      }
+      .mission-focus.completed .mission-progress-track > span {
+        background: #16a34a;
+      }
+      .mission-state-badge {
+        display: inline-block;
+        border: 1px solid #93c5fd;
+        border-radius: 999px;
+        background: #eff6ff;
+        color: #1d4ed8;
+        padding: 2px 10px;
+        font-size: 12px;
+      }
+      .mission-focus.completed .mission-state-badge {
+        border-color: #86efac;
+        background: #dcfce7;
+        color: #166534;
+      }
+      .mission-subtle-toggle {
+        border: none;
+        background: transparent;
+        color: #1d4ed8;
+        padding: 0;
+        font-size: 12px;
+        text-decoration: underline;
+      }
       .difficulty-buttons { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
       .difficulty-buttons button.active {
         border-color: var(--accent);
@@ -294,12 +349,47 @@
       <section class="card mission-card">
         <h2 style="margin-top: 0;">デイリーミッション</h2>
         <p id="missionGuide" class="muted">難易度を選んで、今日の目標を決めよう。</p>
-        <div id="difficultyButtons" class="difficulty-buttons">
-          <button data-difficulty="easy" type="button">easy</button>
-          <button data-difficulty="normal" type="button">normal</button>
-          <button data-difficulty="challenge" type="button">challenge</button>
+        <div id="missionSelectionView">
+          <div id="difficultyButtons" class="difficulty-buttons">
+            <button data-difficulty="easy" type="button">easy</button>
+            <button data-difficulty="normal" type="button">normal</button>
+            <button data-difficulty="challenge" type="button">challenge</button>
+          </div>
+          <div id="missionCandidates" class="mission-candidates"></div>
         </div>
-        <div id="missionCandidates" class="mission-candidates"></div>
+        <div id="missionFocusView" class="hidden">
+          <section id="missionFocusCard" class="mission-focus">
+            <div class="row" style="justify-content: space-between; align-items: center;">
+              <strong>今日の選択中ミッション</strong>
+              <span id="missionStateBadge" class="mission-state-badge">進行中</span>
+            </div>
+            <h3 id="missionTitle" style="margin: 8px 0 6px;">ミッション未選択</h3>
+            <p id="missionDescription" class="muted" style="margin: 0;">難易度を選んでミッションを1つ選択してください。</p>
+            <div class="mission-meta">
+              <div class="hero-box">
+                <p class="mission-label">難易度</p>
+                <p id="missionDifficulty" class="mission-value">-</p>
+              </div>
+              <div class="hero-box">
+                <p class="mission-label">報酬XP</p>
+                <p id="missionReward" class="mission-value">-</p>
+              </div>
+              <div class="hero-box">
+                <p class="mission-label">達成条件</p>
+                <p id="missionObjective" class="mission-value">-</p>
+              </div>
+              <div class="hero-box">
+                <p class="mission-label">現在の進捗</p>
+                <p id="missionProgressText" class="mission-value">-</p>
+                <div class="mission-progress-track"><span id="missionProgressBar" style="width:0%"></span></div>
+              </div>
+            </div>
+            <p id="missionCompletedText" class="muted" style="margin: 6px 0 0;"></p>
+          </section>
+          <button id="missionSelectionToggle" type="button" class="mission-subtle-toggle" style="margin-top:8px;">
+            候補一覧を表示
+          </button>
+        </div>
       </section>
 
       <div class="layout">
@@ -538,8 +628,22 @@
       const characterImage = document.getElementById('characterImage');
       const toastLayer = document.getElementById('toastLayer');
       const missionGuide = document.getElementById('missionGuide');
+      const missionSelectionView = document.getElementById('missionSelectionView');
+      const missionFocusView = document.getElementById('missionFocusView');
+      const missionFocusCard = document.getElementById('missionFocusCard');
+      const missionSelectionToggle = document.getElementById('missionSelectionToggle');
       const difficultyButtons = document.getElementById('difficultyButtons');
       const missionCandidates = document.getElementById('missionCandidates');
+      const missionStateBadge = document.getElementById('missionStateBadge');
+      const missionTitle = document.getElementById('missionTitle');
+      const missionDescription = document.getElementById('missionDescription');
+      const missionDifficulty = document.getElementById('missionDifficulty');
+      const missionReward = document.getElementById('missionReward');
+      const missionObjective = document.getElementById('missionObjective');
+      const missionProgressText = document.getElementById('missionProgressText');
+      const missionProgressBar = document.getElementById('missionProgressBar');
+      const missionCompletedText = document.getElementById('missionCompletedText');
+      missionSelectionView.dataset.expanded = 'false';
 
       function setTodayToCalendar() {
         const now = new Date();
@@ -619,25 +723,68 @@
         heroMainMessage.textContent = text;
       }
 
-      function missionGuidanceText(data) {
-        if (!data || !data.selected_mission_id) return '今日の目標を選ぼう。難易度を決めてミッションを1つ選択してね。';
-        if (data.completed) return `ミッション達成済み！「${data.selected_mission.title}」をクリアできたよ。`;
-        return `選択中: ${data.selected_mission.title}`;
+      function missionGuidanceText(data, phase) {
+        if (!data || phase === 'unselected') return '難易度を選んで、今日のミッションを1つ決めよう。';
+        if (phase === 'completed') return `今日のミッション達成！「${data.selected_mission.title}」をクリアしたよ。`;
+        if (phase === 'almost') return `あと少し！「${data.selected_mission.title}」を達成しよう。`;
+        return `今日のメイン目標: ${data.selected_mission.title}`;
       }
 
-      function renderDailyMission(data) {
-        state.dailyMission = data;
-        missionGuide.textContent = missionGuidanceText(data);
-        if (!data?.selected_mission_id) {
-          heroNextAction.textContent = 'デイリーミッションを1つ選ぶ';
+      function missionObjectiveText(objective = {}) {
+        const target = Number(objective.target || 1);
+        switch (objective.kind) {
+          case 'created_today':
+            return `タスクを${target}件追加`;
+          case 'completed_today':
+            return `タスクを${target}件完了`;
+          case 'high_priority_completed_today':
+            return `優先度「高」を${target}件完了`;
+          case 'active_todos_lte':
+            return `未完了タスクを${target}件以下にする`;
+          default:
+            return '今日の目標を達成する';
         }
+      }
 
-        const activeDifficulty = data?.difficulty || 'normal';
-        [...difficultyButtons.querySelectorAll('button')].forEach((btn) => {
-          btn.classList.toggle('active', btn.dataset.difficulty === activeDifficulty);
-          btn.textContent = DIFFICULTY_LABEL[btn.dataset.difficulty] || btn.dataset.difficulty;
-        });
+      function missionProgressSummary(objective = {}, metrics = {}) {
+        const target = Math.max(Number(objective.target || 1), 1);
+        const kind = objective.kind;
+        const map = {
+          created_today: Number(metrics.created_today || 0),
+          completed_today: Number(metrics.completed_today || 0),
+          high_priority_completed_today: Number(metrics.high_priority_completed_today || 0),
+          active_todos_lte: Number(metrics.active_todos || 0),
+        };
+        const current = map[kind] ?? 0;
+        const done = kind === 'active_todos_lte' ? current <= target : current >= target;
+        let progress = 0;
+        let text = '';
+        if (kind === 'active_todos_lte') {
+          progress = done ? 100 : Math.max(5, Math.round((target / Math.max(current, target)) * 100));
+          text = `現在 ${current}件 / 目標 ${target}件以下`;
+        } else {
+          progress = Math.min(100, Math.round((current / target) * 100));
+          text = `${current} / ${target} 件`;
+        }
+        return { done, text, progress };
+      }
 
+      function getMissionPhase(data) {
+        if (!data?.selected_mission_id) return 'unselected';
+        if (data.completed) return 'completed';
+        const summary = missionProgressSummary(data.selected_mission?.objective || {}, data.metrics || {});
+        if (!summary.done && summary.progress >= 70) return 'almost';
+        return 'selected';
+      }
+
+      function getMissionCharacterState(data, phase) {
+        if (phase === 'unselected') return { mood: 'normal', extraText: '今日のミッションを決めると、動き出しやすくなるよ。' };
+        if (phase === 'completed') return { mood: 'excited', extraText: `今日のミッション「${data.selected_mission.title}」達成！` };
+        if (phase === 'almost') return { mood: 'encouraging', extraText: 'もうすぐ達成！あと一歩だけ進めよう。' };
+        return { mood: 'normal', extraText: `いまは「${data.selected_mission.title}」に集中しよう。` };
+      }
+
+      function renderMissionCandidates(data, phase) {
         missionCandidates.innerHTML = '';
         const candidates = data?.candidates || [];
         if (!candidates.length) {
@@ -650,19 +797,73 @@
           const selected = data.selected_mission_id === mission.id;
           card.className = `mission-item${selected ? ' selected' : ''}${selected && data.completed ? ' completed' : ''}`;
           const status = selected ? (data.completed ? '達成済み' : '選択中') : '未選択';
+          const disabled = selected || phase !== 'unselected';
           card.innerHTML = `
             <div class="mission-item-title">${mission.title}</div>
             <p class="muted" style="margin: 4px 0 8px;">${mission.description}</p>
             <p class="muted" style="margin: 0 0 8px;">報酬: +${mission.reward_xp} XP / 状態: ${status}</p>
-            <button type="button" data-action="select-mission" data-mission-id="${mission.id}" ${selected ? 'disabled' : ''}>このミッションを選ぶ</button>
+            <button type="button" data-action="select-mission" data-mission-id="${mission.id}" ${disabled ? 'disabled' : ''}>このミッションを選ぶ</button>
           `;
           missionCandidates.appendChild(card);
         });
       }
 
-      async function loadDailyMission() {
+      function renderMissionFocus(data, phase) {
+        const selected = data?.selected_mission;
+        const objective = selected?.objective || {};
+        const summary = missionProgressSummary(objective, data?.metrics || {});
+
+        missionFocusCard.classList.toggle('completed', phase === 'completed');
+        missionStateBadge.textContent = phase === 'completed' ? '達成済み' : (phase === 'almost' ? '達成間近' : '進行中');
+        missionTitle.textContent = selected?.title || 'ミッション未選択';
+        missionDescription.textContent = selected?.description || '今日の目標を選択してください。';
+        missionDifficulty.textContent = DIFFICULTY_LABEL[data?.difficulty] || '-';
+        missionReward.textContent = selected ? `+${selected.reward_xp} XP` : '-';
+        missionObjective.textContent = missionObjectiveText(objective);
+        missionProgressText.textContent = summary.text || '-';
+        missionProgressBar.style.width = `${summary.progress || 0}%`;
+        missionCompletedText.textContent = phase === 'completed'
+          ? `今日のミッション達成！追加で +${data.reward_xp || selected?.reward_xp || 0} XP`
+          : 'このミッションを今日のメイン目標として進めよう。';
+      }
+
+      function renderDailyMission(data) {
+        state.dailyMission = data;
+        const phase = getMissionPhase(data);
+        missionGuide.textContent = missionGuidanceText(data, phase);
+
+        const activeDifficulty = data?.difficulty || 'normal';
+        [...difficultyButtons.querySelectorAll('button')].forEach((btn) => {
+          btn.classList.toggle('active', btn.dataset.difficulty === activeDifficulty);
+          btn.textContent = DIFFICULTY_LABEL[btn.dataset.difficulty] || btn.dataset.difficulty;
+        });
+
+        renderMissionCandidates(data, phase);
+
+        const showSelection = phase === 'unselected' || missionSelectionView.dataset.expanded === 'true';
+        missionSelectionView.classList.toggle('hidden', !showSelection);
+        missionFocusView.classList.toggle('hidden', phase === 'unselected');
+        if (phase !== 'unselected') {
+          renderMissionFocus(data, phase);
+          missionSelectionToggle.textContent = showSelection ? '候補一覧を隠す' : '候補一覧を表示';
+          if (heroNextAction.textContent === 'デイリーミッションを1つ選ぶ') {
+            heroNextAction.textContent = phase === 'completed' ? '次のタスクを1つ完了して勢いを維持する' : '選択中ミッションを進める';
+          }
+        } else {
+          heroNextAction.textContent = 'デイリーミッションを1つ選ぶ';
+        }
+      }
+
+      function syncCharacterWithMission(data) {
+        const phase = getMissionPhase(data);
+        const missionCharacter = getMissionCharacterState(data, phase);
+        setCharacterState({ eventType: 'idle', mood: missionCharacter.mood, extraText: missionCharacter.extraText });
+      }
+
+      async function loadDailyMission({ syncCharacter = false } = {}) {
         const data = await api('/api/daily-mission', { method: 'GET' });
         renderDailyMission(data);
+        if (syncCharacter) syncCharacterWithMission(data);
       }
 
       function difficultyToMood(difficulty) {
@@ -813,9 +1014,8 @@
           await loadTodos();
           const progress = await api('/api/progress', { method: 'GET' });
           renderProgress(progress);
-          await loadDailyMission();
+          await loadDailyMission({ syncCharacter: true });
           maybeShowWelcomeBack(progress);
-          setCharacterState({ eventType: 'idle', mood: chooseCharacterMood({ remainingGoals: 2 }) });
         } catch {
           state.token = '';
           localStorage.removeItem('token');
@@ -840,9 +1040,8 @@
           await loadTodos();
           const progress = await api('/api/progress', { method: 'GET' });
           renderProgress(progress);
-          await loadDailyMission();
+          await loadDailyMission({ syncCharacter: true });
           maybeShowWelcomeBack(progress);
-          setCharacterState({ eventType: 'idle', mood: chooseCharacterMood({ remainingGoals: 2 }) });
         } catch (e) {
           loginError.textContent = e.message;
         }
@@ -851,9 +1050,16 @@
       document.getElementById('logoutBtn').addEventListener('click', () => {
         state.token = '';
         localStorage.removeItem('token');
+        missionSelectionView.dataset.expanded = 'false';
         missionCandidates.innerHTML = '';
         missionGuide.textContent = '難易度を選んで、今日の目標を決めよう。';
         showApp(false);
+      });
+
+      missionSelectionToggle.addEventListener('click', () => {
+        const expanded = missionSelectionView.dataset.expanded === 'true';
+        missionSelectionView.dataset.expanded = expanded ? 'false' : 'true';
+        renderDailyMission(state.dailyMission || {});
       });
 
       document.getElementById('createBtn').addEventListener('click', async () => {
@@ -879,9 +1085,8 @@
             setCharacterState({ eventType: 'levelup', mood: 'excited', extraText: `ミッション「${m.mission.title}」達成！` });
             missionCelebrated = true;
           }
-          const remaining = lastTodos.filter((t) => !t.completed).length;
           if (!missionCelebrated) {
-            setCharacterState({ eventType: 'idle', mood: chooseCharacterMood({ remainingGoals: remaining }) });
+            syncCharacterWithMission(state.dailyMission || {});
           }
         } catch (e) {
           createError.textContent = e.message;
@@ -903,10 +1108,11 @@
             body: JSON.stringify({ difficulty }),
           });
           renderDailyMission(data);
+          const missionCharacter = getMissionCharacterState(data, getMissionPhase(data));
           setCharacterState({
             eventType: 'idle',
             mood: difficultyToMood(difficulty),
-            extraText: data.difficulty_message || '今日の目標を選んでみよう。',
+            extraText: data.difficulty_message || missionCharacter.extraText,
           });
         } catch (err) {
           showToast(err.message, 'badge', 2200);
@@ -924,11 +1130,7 @@
           });
           renderDailyMission(data);
           showToast('今日のミッションを選択したよ！', 'success', 1800);
-          setCharacterState({
-            eventType: 'idle',
-            mood: chooseCharacterMood({ remainingGoals: lastTodos.filter((t) => !t.completed).length }),
-            extraText: `今日のミッションは「${data.selected_mission.title}」だね。`,
-          });
+          syncCharacterWithMission(data);
         } catch (err) {
           showToast(err.message, 'badge', 2200);
         }

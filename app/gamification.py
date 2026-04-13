@@ -27,6 +27,75 @@ BADGE_DEFINITIONS = [
     {"code": "level_5", "name": "レベル5に到達した", "icon": "⭐"},
 ]
 
+DAILY_MISSION_REWARDS = {
+    "easy": 15,
+    "normal": 30,
+    "challenge": 50,
+}
+
+DAILY_MISSION_LIBRARY = {
+    "easy": [
+        {
+            "id": "create_1",
+            "title": "タスクを1件追加する",
+            "description": "今日やることを1つ書き出そう。",
+            "objective": {"kind": "created_today", "target": 1},
+        },
+        {
+            "id": "complete_1",
+            "title": "タスクを1件完了する",
+            "description": "小さな完了を1つ積み上げよう。",
+            "objective": {"kind": "completed_today", "target": 1},
+        },
+        {
+            "id": "active_2",
+            "title": "未完了タスクを2件まで整理する",
+            "description": "抱えているタスク数を軽くしよう。",
+            "objective": {"kind": "active_todos_lte", "target": 2},
+        },
+    ],
+    "normal": [
+        {
+            "id": "create_2",
+            "title": "タスクを2件追加する",
+            "description": "今日進めたい項目を2つ用意しよう。",
+            "objective": {"kind": "created_today", "target": 2},
+        },
+        {
+            "id": "complete_2",
+            "title": "タスクを2件完了する",
+            "description": "勢いよく2つ片付けよう。",
+            "objective": {"kind": "completed_today", "target": 2},
+        },
+        {
+            "id": "priority_complete_1",
+            "title": "優先度「高」のタスクを1件完了する",
+            "description": "重要タスクを先に片付けよう。",
+            "objective": {"kind": "high_priority_completed_today", "target": 1},
+        },
+    ],
+    "challenge": [
+        {
+            "id": "complete_3",
+            "title": "タスクを3件完了する",
+            "description": "集中して3つ完了を目指そう。",
+            "objective": {"kind": "completed_today", "target": 3},
+        },
+        {
+            "id": "priority_complete_2",
+            "title": "優先度「高」のタスクを2件完了する",
+            "description": "重要タスクをまとめて進めよう。",
+            "objective": {"kind": "high_priority_completed_today", "target": 2},
+        },
+        {
+            "id": "active_0",
+            "title": "未完了タスクを0件にする",
+            "description": "今日の未完了をゼロにしよう。",
+            "objective": {"kind": "active_todos_lte", "target": 0},
+        },
+    ],
+}
+
 
 @dataclass
 class RewardBreakdown:

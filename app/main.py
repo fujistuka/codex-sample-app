@@ -11,6 +11,8 @@ from urllib.parse import parse_qs, urlparse
 from app.gamification import (
     BADGE_DEFINITIONS,
     BASE_XP,
+    DAILY_MISSION_LIBRARY,
+    DAILY_MISSION_REWARDS,
     calculate_reward,
     character_event_payload,
     evaluate_badges,
@@ -164,6 +166,24 @@ def init_db() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS daily_missions (
+                user_id INTEGER NOT NULL,
+                mission_date TEXT NOT NULL,
+                difficulty TEXT NOT NULL,
+                candidates_json TEXT NOT NULL,
+                selected_mission_id TEXT,
+                selected_mission_json TEXT,
+                completed INTEGER NOT NULL DEFAULT 0,
+                completed_at TEXT,
+                reward_xp INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (user_id, mission_date),
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+            """
+        )
 
         user = conn.execute("SELECT id FROM users WHERE username = ?", (DEFAULT_USERNAME,)).fetchone()
         if user is None:
@@ -218,6 +238,233 @@ def row_to_todo(row: sqlite3.Row) -> Dict[str, object]:
 
 def _today_str() -> str:
     return datetime.utcnow().date().isoformat()
+
+
+def _normalize_difficulty(difficulty: str) -> str:
+    if difficulty in DAILY_MISSION_LIBRARY:
+        return difficulty
+    return "normal"
+
+
+def _build_daily_candidates(user_id: int, mission_date: str, difficulty: str) -> List[Dict[str, object]]:
+    diff = _normalize_difficulty(difficulty)
+    templates = DAILY_MISSION_LIBRARY[diff]
+    day_seed = int(mission_date.replace("-", ""))
+    ranked = sorted(
+        templates,
+        key=lambda item: ((hash(f"{user_id}:{mission_date}:{item['id']}") + day_seed) % 100000),
+    )
+    return [
+        {
+            "id": item["id"],
+            "title": item["title"],
+            "description": item["description"],
+            "objective": item["objective"],
+            "reward_xp": DAILY_MISSION_REWARDS[diff],
+        }
+        for item in ranked[:3]
+    ]
+
+
+def _ensure_daily_mission(conn: sqlite3.Connection, user_id: int, mission_date: str, difficulty: str = "normal") -> sqlite3.Row:
+    row = conn.execute(
+        """
+        SELECT user_id, mission_date, difficulty, candidates_json, selected_mission_id, selected_mission_json,
+               completed, completed_at, reward_xp
+        FROM daily_missions
+        WHERE user_id = ? AND mission_date = ?
+        """,
+        (user_id, mission_date),
+    ).fetchone()
+    if row is not None:
+        return row
+
+    safe_diff = _normalize_difficulty(difficulty)
+    candidates = _build_daily_candidates(user_id, mission_date, safe_diff)
+    conn.execute(
+        """
+        INSERT INTO daily_missions(
+            user_id, mission_date, difficulty, candidates_json, selected_mission_id, selected_mission_json,
+            completed, completed_at, reward_xp, updated_at
+        ) VALUES (?, ?, ?, ?, NULL, NULL, 0, NULL, 0, ?)
+        """,
+        (user_id, mission_date, safe_diff, json.dumps(candidates, ensure_ascii=False), iso_now()),
+    )
+    return conn.execute(
+        """
+        SELECT user_id, mission_date, difficulty, candidates_json, selected_mission_id, selected_mission_json,
+               completed, completed_at, reward_xp
+        FROM daily_missions
+        WHERE user_id = ? AND mission_date = ?
+        """,
+        (user_id, mission_date),
+    ).fetchone()
+
+
+def _today_metrics(conn: sqlite3.Connection, user_id: int, mission_date: str) -> Dict[str, int]:
+    created_today = conn.execute(
+        "SELECT COUNT(*) AS cnt FROM todos WHERE user_id = ? AND substr(created_at, 1, 10) = ?",
+        (user_id, mission_date),
+    ).fetchone()["cnt"]
+    completed_today = conn.execute(
+        """
+        SELECT COUNT(*) AS cnt
+        FROM reward_logs
+        WHERE user_id = ? AND substr(created_at, 1, 10) = ?
+        """,
+        (user_id, mission_date),
+    ).fetchone()["cnt"]
+    high_priority_completed_today = conn.execute(
+        """
+        SELECT COUNT(*) AS cnt
+        FROM reward_logs rl
+        JOIN todos t ON t.id = rl.todo_id
+        WHERE rl.user_id = ? AND substr(rl.created_at, 1, 10) = ? AND t.priority = 1
+        """,
+        (user_id, mission_date),
+    ).fetchone()["cnt"]
+    active_todos = conn.execute(
+        "SELECT COUNT(*) AS cnt FROM todos WHERE user_id = ? AND completed = 0",
+        (user_id,),
+    ).fetchone()["cnt"]
+    return {
+        "created_today": int(created_today),
+        "completed_today": int(completed_today),
+        "high_priority_completed_today": int(high_priority_completed_today),
+        "active_todos": int(active_todos),
+    }
+
+
+def _is_mission_completed(objective: Dict[str, object], metrics: Dict[str, int]) -> bool:
+    kind = objective.get("kind")
+    target = int(objective.get("target", 1))
+    if kind == "created_today":
+        return metrics["created_today"] >= target
+    if kind == "completed_today":
+        return metrics["completed_today"] >= target
+    if kind == "high_priority_completed_today":
+        return metrics["high_priority_completed_today"] >= target
+    if kind == "active_todos_lte":
+        return metrics["active_todos"] <= target
+    return False
+
+
+def _mission_row_to_payload(row: sqlite3.Row, metrics: Dict[str, int]) -> Dict[str, object]:
+    candidates = json.loads(row["candidates_json"] or "[]")
+    selected = json.loads(row["selected_mission_json"]) if row["selected_mission_json"] else None
+    return {
+        "date": row["mission_date"],
+        "difficulty": row["difficulty"],
+        "candidates": candidates,
+        "selected_mission_id": row["selected_mission_id"],
+        "selected_mission": selected,
+        "completed": bool(row["completed"]),
+        "completed_at": row["completed_at"],
+        "reward_xp": int(row["reward_xp"]),
+        "metrics": metrics,
+    }
+
+
+def get_daily_mission_state(user_id: int) -> Dict[str, object]:
+    mission_date = _today_str()
+    with get_conn() as conn:
+        row = _ensure_daily_mission(conn, user_id, mission_date)
+        metrics = _today_metrics(conn, user_id, mission_date)
+    return _mission_row_to_payload(row, metrics)
+
+
+def set_daily_mission_difficulty(user_id: int, difficulty: str) -> Dict[str, object]:
+    mission_date = _today_str()
+    safe_diff = _normalize_difficulty(difficulty)
+    with get_conn() as conn:
+        row = _ensure_daily_mission(conn, user_id, mission_date, safe_diff)
+        if row["selected_mission_id"] is None:
+            candidates = _build_daily_candidates(user_id, mission_date, safe_diff)
+            conn.execute(
+                """
+                UPDATE daily_missions
+                SET difficulty = ?, candidates_json = ?, updated_at = ?
+                WHERE user_id = ? AND mission_date = ?
+                """,
+                (safe_diff, json.dumps(candidates, ensure_ascii=False), iso_now(), user_id, mission_date),
+            )
+        row = _ensure_daily_mission(conn, user_id, mission_date, safe_diff)
+        metrics = _today_metrics(conn, user_id, mission_date)
+    payload = _mission_row_to_payload(row, metrics)
+    payload["difficulty_message"] = {
+        "easy": "今日は軽めにいこう。できる範囲でOK！",
+        "normal": "ちょうどいい目標で、安定して進めよう！",
+        "challenge": "チャレンジいいね！一緒に達成を狙おう🔥",
+    }[safe_diff]
+    return payload
+
+
+def select_daily_mission(user_id: int, mission_id: str) -> Dict[str, object]:
+    mission_date = _today_str()
+    with get_conn() as conn:
+        row = _ensure_daily_mission(conn, user_id, mission_date)
+        candidates = json.loads(row["candidates_json"] or "[]")
+        if row["selected_mission_id"]:
+            selected = row["selected_mission_id"]
+            if selected != mission_id:
+                raise ValueError("本日のミッションはすでに選択済みです")
+        chosen = next((c for c in candidates if c["id"] == mission_id), None)
+        if chosen is None:
+            raise ValueError("候補にないミッションです")
+        conn.execute(
+            """
+            UPDATE daily_missions
+            SET selected_mission_id = ?, selected_mission_json = ?, updated_at = ?
+            WHERE user_id = ? AND mission_date = ?
+            """,
+            (mission_id, json.dumps(chosen, ensure_ascii=False), iso_now(), user_id, mission_date),
+        )
+        updated = _ensure_daily_mission(conn, user_id, mission_date)
+        metrics = _today_metrics(conn, user_id, mission_date)
+    return _mission_row_to_payload(updated, metrics)
+
+
+def evaluate_daily_mission(user_id: int) -> Optional[Dict[str, object]]:
+    mission_date = _today_str()
+    with get_conn() as conn:
+        row = _ensure_daily_mission(conn, user_id, mission_date)
+        if not row["selected_mission_json"] or int(row["completed"]) == 1:
+            return None
+        selected = json.loads(row["selected_mission_json"])
+        metrics = _today_metrics(conn, user_id, mission_date)
+        if not _is_mission_completed(selected.get("objective", {}), metrics):
+            return None
+
+        reward_xp = int(selected.get("reward_xp") or DAILY_MISSION_REWARDS.get(row["difficulty"], 30))
+        progress = _load_progress(conn, user_id)
+        prev_level = int(progress["level"])
+        new_total = int(progress["total_xp"]) + reward_xp
+        new_level = level_from_total_xp(new_total)
+        conn.execute(
+            """
+            UPDATE user_progress
+            SET total_xp = ?, level = ?, updated_at = ?
+            WHERE user_id = ?
+            """,
+            (new_total, new_level, iso_now(), user_id),
+        )
+        conn.execute(
+            """
+            UPDATE daily_missions
+            SET completed = 1, completed_at = ?, reward_xp = ?, updated_at = ?
+            WHERE user_id = ? AND mission_date = ?
+            """,
+            (iso_now(), reward_xp, iso_now(), user_id, mission_date),
+        )
+    return {
+        "mission_completed": True,
+        "mission": selected,
+        "reward_xp": reward_xp,
+        "leveled_up": new_level > prev_level,
+        "total_xp": new_total,
+        "level": new_level,
+        "xp_to_next_level": xp_to_next_level(new_total),
+    }
 
 
 def _load_progress(conn: sqlite3.Connection, user_id: int) -> sqlite3.Row:
@@ -518,7 +765,11 @@ def create_todo(user_id: int, payload: Dict[str, object]) -> Dict[str, object]:
             "SELECT id, title, completed, due_date, priority, tags, created_at FROM todos WHERE id = ? AND user_id = ?",
             (todo_id, user_id),
         ).fetchone()
-    return row_to_todo(row)
+    todo = row_to_todo(row)
+    mission_update = evaluate_daily_mission(user_id)
+    if mission_update:
+        todo["daily_mission"] = mission_update
+    return todo
 
 
 def list_todos(
@@ -637,6 +888,9 @@ def toggle_todo(user_id: int, todo_id: int) -> Dict[str, object]:
     todo = row_to_todo(row)
     if completed == 1:
         todo["reward"] = grant_completion_reward(user_id, todo_id)
+        mission_update = evaluate_daily_mission(user_id)
+        if mission_update:
+            todo["daily_mission"] = mission_update
     return todo
 
 
@@ -674,6 +928,12 @@ if FastAPI is not None:
         due_date: Optional[str] = None
         priority: Optional[int] = None
         tags: Optional[Union[List[str], str]] = None
+
+    class DailyMissionDifficultyRequest(BaseModel):
+        difficulty: str
+
+    class DailyMissionSelectRequest(BaseModel):
+        mission_id: str
 
     def require_user(authorization: Optional[str]) -> int:
         user_id = user_id_from_token(authorization)
@@ -716,6 +976,28 @@ if FastAPI is not None:
     def api_progress(authorization: Optional[str] = Header(default=None)) -> Dict[str, object]:
         user_id = require_user(authorization)
         return get_progress(user_id)
+
+    @app.get("/api/daily-mission")
+    def api_daily_mission(authorization: Optional[str] = Header(default=None)) -> Dict[str, object]:
+        user_id = require_user(authorization)
+        return get_daily_mission_state(user_id)
+
+    @app.post("/api/daily-mission/difficulty")
+    def api_daily_mission_difficulty(
+        payload: DailyMissionDifficultyRequest, authorization: Optional[str] = Header(default=None)
+    ) -> Dict[str, object]:
+        user_id = require_user(authorization)
+        return set_daily_mission_difficulty(user_id, payload.difficulty)
+
+    @app.post("/api/daily-mission/select")
+    def api_daily_mission_select(
+        payload: DailyMissionSelectRequest, authorization: Optional[str] = Header(default=None)
+    ) -> Dict[str, object]:
+        user_id = require_user(authorization)
+        try:
+            return select_daily_mission(user_id, payload.mission_id)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
 
     @app.post("/api/todos")
     def post_todo(payload: TodoCreateRequest, authorization: Optional[str] = Header(default=None)) -> Dict[str, object]:
@@ -852,6 +1134,12 @@ class FallbackTodoHandler(BaseHTTPRequestHandler):
                 return self._json(401, {"detail": "認証が必要です"})
             return self._json(200, get_progress(user_id))
 
+        if path == "/api/daily-mission":
+            user_id = self._read_user()
+            if user_id is None:
+                return self._json(401, {"detail": "認証が必要です"})
+            return self._json(200, get_daily_mission_state(user_id))
+
         return self._json(404, {"detail": "Not Found"})
 
     def do_POST(self) -> None:  # noqa: N802
@@ -882,6 +1170,32 @@ class FallbackTodoHandler(BaseHTTPRequestHandler):
                 payload = self._parse_json_body()
                 todo = create_todo(user_id, payload)
                 return self._json(200, todo)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                return self._json(400, {"detail": "JSONが不正です"})
+            except ValueError as error:
+                return self._json(400, {"detail": str(error)})
+
+        if path == "/api/daily-mission/difficulty":
+            user_id = self._read_user()
+            if user_id is None:
+                return self._json(401, {"detail": "認証が必要です"})
+            try:
+                payload = self._parse_json_body()
+                difficulty = str(payload.get("difficulty", "normal"))
+                return self._json(200, set_daily_mission_difficulty(user_id, difficulty))
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                return self._json(400, {"detail": "JSONが不正です"})
+
+        if path == "/api/daily-mission/select":
+            user_id = self._read_user()
+            if user_id is None:
+                return self._json(401, {"detail": "認証が必要です"})
+            try:
+                payload = self._parse_json_body()
+                mission_id = str(payload.get("mission_id", "")).strip()
+                if not mission_id:
+                    return self._json(400, {"detail": "mission_idは必須です"})
+                return self._json(200, select_daily_mission(user_id, mission_id))
             except (json.JSONDecodeError, UnicodeDecodeError):
                 return self._json(400, {"detail": "JSONが不正です"})
             except ValueError as error:

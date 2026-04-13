@@ -76,6 +76,15 @@ def main() -> int:
         print(f"[OK] progress before: xp={before_progress['total_xp']} lv={before_progress['level']}")
         print(f"[OK] login streak: {before_progress['login_streak_days']}日")
 
+        mission = request_json("GET", "/api/daily-mission", token=token)
+        print(f"[OK] daily mission loaded: difficulty={mission['difficulty']} candidates={len(mission['candidates'])}")
+        mission = request_json("POST", "/api/daily-mission/difficulty", token=token, payload={"difficulty": "easy"})
+        pick_id = mission["candidates"][0]["id"]
+        mission = request_json("POST", "/api/daily-mission/select", token=token, payload={"mission_id": pick_id})
+        if mission["selected_mission_id"] != pick_id:
+            raise RuntimeError("daily mission selection failed")
+        print(f"[OK] daily mission select: {pick_id}")
+
         toggled = request_json("PATCH", f"/api/todos/{todo_id}/toggle", token=token)
         print(f"[OK] toggle: completed={toggled['completed']}")
         if "reward" in toggled:

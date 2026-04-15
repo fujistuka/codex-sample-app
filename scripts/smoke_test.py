@@ -85,6 +85,11 @@ def main() -> int:
             raise RuntimeError("daily mission selection failed")
         print(f"[OK] daily mission select: {pick_id}")
 
+        review = request_json("GET", "/api/review?days=7", token=token)
+        if "metrics" not in review or "character_comment" not in review:
+            raise RuntimeError("weekly review payload is incomplete")
+        print(f"[OK] weekly review: completed={review['metrics']['completed_tasks']} xp={review['metrics']['gained_xp']}")
+
         toggled = request_json("PATCH", f"/api/todos/{todo_id}/toggle", token=token)
         print(f"[OK] toggle: completed={toggled['completed']}")
         if "reward" in toggled:

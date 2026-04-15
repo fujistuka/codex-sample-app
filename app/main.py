@@ -3,6 +3,7 @@ import os
 import re
 import secrets
 import sqlite3
+from collections import Counter
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -537,6 +538,120 @@ def get_progress(user_id: int) -> Dict[str, object]:
     }
 
 
+def _period_start(days: int) -> str:
+    safe_days = max(1, min(days, 366))
+    start_date = datetime.utcnow().date() - timedelta(days=safe_days - 1)
+    return start_date.isoformat()
+
+
+def _review_comment(metrics: Dict[str, object]) -> str:
+    streak_days = int(metrics.get("active_days", 0))
+    mission_count = int(metrics.get("daily_missions_completed", 0))
+    xp = int(metrics.get("gained_xp", 0))
+    completed = int(metrics.get("completed_tasks", 0))
+    if streak_days >= 5:
+        return "今週はすごく安定して続けられたね！このリズムは大きな力だよ。"
+    if mission_count >= 3:
+        return "デイリーミッションをしっかり達成できてる！目標選びが上手だね。"
+    if completed >= 5 or xp >= 100:
+        return "しっかり前進してるよ。積み重ねがちゃんと結果になってる！"
+    if completed == 0 and mission_count == 0:
+        return "今週はおつかれさま。来週は小さな1歩から一緒に再開しよう。"
+    return "コツコツ進められているよ。来週はもう一段だけ目標を上げてみよう！"
+
+
+def get_review_summary(user_id: int, days: int = 7) -> Dict[str, object]:
+    period_days = max(1, min(days, 366))
+    start_date = _period_start(period_days)
+    end_date = _today_str()
+
+    with get_conn() as conn:
+        created_tasks = int(
+            conn.execute(
+                "SELECT COUNT(*) AS cnt FROM todos WHERE user_id = ? AND substr(created_at, 1, 10) >= ?",
+                (user_id, start_date),
+            ).fetchone()["cnt"]
+        )
+        completed_tasks = int(
+            conn.execute(
+                "SELECT COUNT(*) AS cnt FROM reward_logs WHERE user_id = ? AND substr(created_at, 1, 10) >= ?",
+                (user_id, start_date),
+            ).fetchone()["cnt"]
+        )
+        daily_missions_completed = int(
+            conn.execute(
+                """
+                SELECT COUNT(*) AS cnt
+                FROM daily_missions
+                WHERE user_id = ? AND completed = 1 AND mission_date >= ?
+                """,
+                (user_id, start_date),
+            ).fetchone()["cnt"]
+        )
+        task_xp = int(
+            conn.execute(
+                "SELECT COALESCE(SUM(gained_xp), 0) AS total FROM reward_logs WHERE user_id = ? AND substr(created_at, 1, 10) >= ?",
+                (user_id, start_date),
+            ).fetchone()["total"]
+        )
+        mission_xp = int(
+            conn.execute(
+                """
+                SELECT COALESCE(SUM(reward_xp), 0) AS total
+                FROM daily_missions
+                WHERE user_id = ? AND completed = 1 AND mission_date >= ?
+                """,
+                (user_id, start_date),
+            ).fetchone()["total"]
+        )
+        tag_rows = conn.execute(
+            """
+            SELECT tags FROM todos
+            WHERE user_id = ? AND substr(created_at, 1, 10) >= ?
+            """,
+            (user_id, start_date),
+        ).fetchall()
+        active_date_rows = conn.execute(
+            """
+            SELECT d, COUNT(*) AS cnt FROM (
+              SELECT substr(created_at, 1, 10) AS d FROM todos WHERE user_id = ? AND substr(created_at, 1, 10) >= ?
+              UNION ALL
+              SELECT substr(created_at, 1, 10) AS d FROM reward_logs WHERE user_id = ? AND substr(created_at, 1, 10) >= ?
+              UNION ALL
+              SELECT mission_date AS d FROM daily_missions WHERE user_id = ? AND completed = 1 AND mission_date >= ?
+            ) tmp
+            GROUP BY d
+            ORDER BY d DESC
+            """,
+            (user_id, start_date, user_id, start_date, user_id, start_date),
+        ).fetchall()
+
+    tag_counter: Counter[str] = Counter()
+    for row in tag_rows:
+        raw = row["tags"] or ""
+        tags = [tag.strip() for tag in raw.split(",") if tag.strip()]
+        tag_counter.update(tags)
+    top_tag = tag_counter.most_common(1)[0][0] if tag_counter else None
+    active_days = len(active_date_rows)
+    gained_xp = task_xp + mission_xp
+    metrics = {
+        "completed_tasks": completed_tasks,
+        "created_tasks": created_tasks,
+        "daily_missions_completed": daily_missions_completed,
+        "gained_xp": gained_xp,
+        "task_xp": task_xp,
+        "mission_xp": mission_xp,
+        "active_days": active_days,
+        "top_tag": top_tag,
+    }
+    return {
+        "period": {"days": period_days, "start_date": start_date, "end_date": end_date},
+        "metrics": metrics,
+        "activity_dates": [row["d"] for row in active_date_rows],
+        "character_comment": _review_comment(metrics),
+    }
+
+
 def grant_completion_reward(user_id: int, todo_id: int) -> Dict[str, object]:
     now = datetime.utcnow()
     today = now.date()
@@ -977,6 +1092,11 @@ if FastAPI is not None:
         user_id = require_user(authorization)
         return get_progress(user_id)
 
+    @app.get("/api/review")
+    def api_review(days: int = 7, authorization: Optional[str] = Header(default=None)) -> Dict[str, object]:
+        user_id = require_user(authorization)
+        return get_review_summary(user_id, days=days)
+
     @app.get("/api/daily-mission")
     def api_daily_mission(authorization: Optional[str] = Header(default=None)) -> Dict[str, object]:
         user_id = require_user(authorization)
@@ -1133,6 +1253,17 @@ class FallbackTodoHandler(BaseHTTPRequestHandler):
             if user_id is None:
                 return self._json(401, {"detail": "認証が必要です"})
             return self._json(200, get_progress(user_id))
+
+        if path == "/api/review":
+            user_id = self._read_user()
+            if user_id is None:
+                return self._json(401, {"detail": "認証が必要です"})
+            query = parse_qs(parsed.query)
+            try:
+                days = int(query.get("days", ["7"])[0])
+            except ValueError:
+                days = 7
+            return self._json(200, get_review_summary(user_id, days=days))
 
         if path == "/api/daily-mission":
             user_id = self._read_user()

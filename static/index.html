@@ -209,6 +209,37 @@
         background: #f0fdf4;
       }
       .mission-item-title { font-weight: 600; margin-bottom: 4px; }
+      .review-card {
+        border: 1px solid var(--border);
+        background: #fff;
+      }
+      .review-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+      }
+      .review-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 10px;
+      }
+      .review-box {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 10px;
+        background: #fff;
+      }
+      .review-label { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+      .review-value { font-size: 16px; font-weight: 600; }
+      .review-comment {
+        border: 1px solid #dbeafe;
+        border-radius: 10px;
+        padding: 10px;
+        background: #f8fbff;
+        margin-top: 10px;
+      }
 
       .progress {
         height: 10px;
@@ -295,6 +326,7 @@
         .hero-meta { grid-template-columns: 1fr; }
         .character-image-main { width: 180px; height: 180px; }
         .mission-main-meta { grid-template-columns: 1fr; }
+        .review-grid { grid-template-columns: 1fr 1fr; }
       }
     </style>
   </head>
@@ -453,6 +485,28 @@
               <button id="nextBtn">次へ</button>
             </div>
           </section>
+
+          <section id="weeklyReviewCard" class="card review-card">
+            <div class="review-header">
+              <h2 style="margin: 0;">週次振り返り（直近7日）</h2>
+              <button id="toggleWeeklyReviewBtn" type="button">折りたたむ</button>
+            </div>
+            <p id="weeklyReviewPeriod" class="muted" style="margin: 8px 0 0;">-</p>
+            <div id="weeklyReviewBody">
+              <div class="review-grid">
+                <div class="review-box"><p class="review-label">完了タスク</p><p id="reviewCompletedTasks" class="review-value">0</p></div>
+                <div class="review-box"><p class="review-label">作成タスク</p><p id="reviewCreatedTasks" class="review-value">0</p></div>
+                <div class="review-box"><p class="review-label">達成ミッション</p><p id="reviewMissionCount" class="review-value">0</p></div>
+                <div class="review-box"><p class="review-label">獲得XP</p><p id="reviewXp" class="review-value">0</p></div>
+                <div class="review-box"><p class="review-label">継続日数</p><p id="reviewActiveDays" class="review-value">0</p></div>
+                <div class="review-box"><p class="review-label">最多タグ</p><p id="reviewTopTag" class="review-value">-</p></div>
+              </div>
+              <div class="review-comment">
+                <p class="review-label">キャラクターの振り返りコメント</p>
+                <p id="reviewCharacterComment" style="margin: 4px 0 0;">-</p>
+              </div>
+            </div>
+          </section>
         </main>
 
         <aside class="side">
@@ -489,6 +543,7 @@
         totalPages: 1,
         dailyMission: null,
         missionCandidatesExpanded: true,
+        weeklyReviewCollapsed: false,
       };
 
       const DIFFICULTY_LABEL = {
@@ -627,6 +682,16 @@
       const selectedMissionCondition = document.getElementById('selectedMissionCondition');
       const selectedMissionProgressText = document.getElementById('selectedMissionProgressText');
       const selectedMissionProgressBar = document.getElementById('selectedMissionProgressBar');
+      const toggleWeeklyReviewBtn = document.getElementById('toggleWeeklyReviewBtn');
+      const weeklyReviewBody = document.getElementById('weeklyReviewBody');
+      const weeklyReviewPeriod = document.getElementById('weeklyReviewPeriod');
+      const reviewCompletedTasks = document.getElementById('reviewCompletedTasks');
+      const reviewCreatedTasks = document.getElementById('reviewCreatedTasks');
+      const reviewMissionCount = document.getElementById('reviewMissionCount');
+      const reviewXp = document.getElementById('reviewXp');
+      const reviewActiveDays = document.getElementById('reviewActiveDays');
+      const reviewTopTag = document.getElementById('reviewTopTag');
+      const reviewCharacterComment = document.getElementById('reviewCharacterComment');
 
       function setTodayToCalendar() {
         const now = new Date();
@@ -961,6 +1026,24 @@
         renderProgress(data);
       }
 
+      function renderWeeklyReview(data) {
+        const metrics = data.metrics || {};
+        const period = data.period || {};
+        weeklyReviewPeriod.textContent = `${period.start_date || '-'} 〜 ${period.end_date || '-'}（${period.days || 7}日）`;
+        reviewCompletedTasks.textContent = String(metrics.completed_tasks ?? 0);
+        reviewCreatedTasks.textContent = String(metrics.created_tasks ?? 0);
+        reviewMissionCount.textContent = String(metrics.daily_missions_completed ?? 0);
+        reviewXp.textContent = `${metrics.gained_xp ?? 0} XP`;
+        reviewActiveDays.textContent = `${metrics.active_days ?? 0}日`;
+        reviewTopTag.textContent = metrics.top_tag || 'なし';
+        reviewCharacterComment.textContent = data.character_comment || '今週の振り返りを始めよう。';
+      }
+
+      async function loadWeeklyReview(days = 7) {
+        const data = await api(`/api/review?days=${encodeURIComponent(days)}`, { method: 'GET' });
+        renderWeeklyReview(data);
+      }
+
       function showApp(isLoggedIn) {
         loginCard.classList.toggle('hidden', isLoggedIn);
         appSection.classList.toggle('hidden', !isLoggedIn);
@@ -978,6 +1061,7 @@
           const progress = await api('/api/progress', { method: 'GET' });
           renderProgress(progress);
           await loadDailyMission();
+          await loadWeeklyReview();
           maybeShowWelcomeBack(progress);
           setCharacterState({ eventType: 'idle', mood: chooseCharacterMood({ remainingGoals: 2 }) });
         } catch {
@@ -1005,6 +1089,7 @@
           const progress = await api('/api/progress', { method: 'GET' });
           renderProgress(progress);
           await loadDailyMission();
+          await loadWeeklyReview();
           maybeShowWelcomeBack(progress);
           setCharacterState({ eventType: 'idle', mood: chooseCharacterMood({ remainingGoals: 2 }) });
         } catch (e) {
@@ -1016,10 +1101,21 @@
         state.token = '';
         localStorage.removeItem('token');
         state.missionCandidatesExpanded = true;
+        state.weeklyReviewCollapsed = false;
         missionCandidates.innerHTML = '';
         missionCandidatesWrap.classList.remove('hidden');
         selectedMissionPanel.classList.add('hidden');
         toggleCandidatesBtn.classList.add('hidden');
+        weeklyReviewBody.classList.remove('hidden');
+        toggleWeeklyReviewBtn.textContent = '折りたたむ';
+        weeklyReviewPeriod.textContent = '-';
+        reviewCompletedTasks.textContent = '0';
+        reviewCreatedTasks.textContent = '0';
+        reviewMissionCount.textContent = '0';
+        reviewXp.textContent = '0 XP';
+        reviewActiveDays.textContent = '0日';
+        reviewTopTag.textContent = '-';
+        reviewCharacterComment.textContent = '-';
         missionGuide.textContent = '難易度を選んで、今日の目標を決めよう。';
         showApp(false);
       });
@@ -1040,6 +1136,7 @@
           await loadTodos();
           await loadProgress();
           await loadDailyMission();
+          await loadWeeklyReview();
           let missionCelebrated = false;
           if (created.daily_mission?.mission_completed) {
             const m = created.daily_mission;
@@ -1109,6 +1206,12 @@
         if (state.dailyMission) renderDailyMission(state.dailyMission);
       });
 
+      toggleWeeklyReviewBtn.addEventListener('click', () => {
+        state.weeklyReviewCollapsed = !state.weeklyReviewCollapsed;
+        weeklyReviewBody.classList.toggle('hidden', state.weeklyReviewCollapsed);
+        toggleWeeklyReviewBtn.textContent = state.weeklyReviewCollapsed ? '開く' : '折りたたむ';
+      });
+
       document.getElementById('prevBtn').addEventListener('click', async () => {
         if (state.page <= 1) return;
         state.page -= 1;
@@ -1172,6 +1275,7 @@
           await loadTodos();
           await loadProgress();
           await loadDailyMission();
+          await loadWeeklyReview();
           return;
         }
 
@@ -1180,6 +1284,7 @@
           await api(`/api/todos/${id}`, { method: 'DELETE' });
           await loadTodos();
           await loadProgress();
+          await loadWeeklyReview();
           return;
         }
 
@@ -1192,6 +1297,7 @@
           });
           await loadTodos();
           await loadProgress();
+          await loadWeeklyReview();
         }
       });
 

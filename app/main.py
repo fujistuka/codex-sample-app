@@ -46,6 +46,7 @@ DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 DEFAULT_USERNAME = "admin"
 DEFAULT_PASSWORD = "password"
 SESSION_DAYS = 30
+SUB_MISSION_XP_RATE = 0.4
 
 sessions: Dict[str, int] = {}
 
@@ -185,6 +186,23 @@ def init_db() -> None:
             )
             """
         )
+        daily_columns = {r["name"] for r in conn.execute("PRAGMA table_info(daily_missions)").fetchall()}
+        if "main_mission_id" not in daily_columns:
+            conn.execute("ALTER TABLE daily_missions ADD COLUMN main_mission_id TEXT")
+        if "main_mission_json" not in daily_columns:
+            conn.execute("ALTER TABLE daily_missions ADD COLUMN main_mission_json TEXT")
+        if "main_completed" not in daily_columns:
+            conn.execute("ALTER TABLE daily_missions ADD COLUMN main_completed INTEGER NOT NULL DEFAULT 0")
+        if "main_completed_at" not in daily_columns:
+            conn.execute("ALTER TABLE daily_missions ADD COLUMN main_completed_at TEXT")
+        if "main_reward_xp" not in daily_columns:
+            conn.execute("ALTER TABLE daily_missions ADD COLUMN main_reward_xp INTEGER NOT NULL DEFAULT 0")
+        if "sub_missions_json" not in daily_columns:
+            conn.execute("ALTER TABLE daily_missions ADD COLUMN sub_missions_json TEXT NOT NULL DEFAULT '[]'")
+        if "sub_progress_json" not in daily_columns:
+            conn.execute("ALTER TABLE daily_missions ADD COLUMN sub_progress_json TEXT NOT NULL DEFAULT '{}'")
+        if "sub_total_reward_xp" not in daily_columns:
+            conn.execute("ALTER TABLE daily_missions ADD COLUMN sub_total_reward_xp INTEGER NOT NULL DEFAULT 0")
 
         user = conn.execute("SELECT id FROM users WHERE username = ?", (DEFAULT_USERNAME,)).fetchone()
         if user is None:
@@ -271,7 +289,9 @@ def _ensure_daily_mission(conn: sqlite3.Connection, user_id: int, mission_date: 
     row = conn.execute(
         """
         SELECT user_id, mission_date, difficulty, candidates_json, selected_mission_id, selected_mission_json,
-               completed, completed_at, reward_xp
+               completed, completed_at, reward_xp,
+               main_mission_id, main_mission_json, main_completed, main_completed_at, main_reward_xp,
+               sub_missions_json, sub_progress_json, sub_total_reward_xp
         FROM daily_missions
         WHERE user_id = ? AND mission_date = ?
         """,
@@ -294,7 +314,9 @@ def _ensure_daily_mission(conn: sqlite3.Connection, user_id: int, mission_date: 
     return conn.execute(
         """
         SELECT user_id, mission_date, difficulty, candidates_json, selected_mission_id, selected_mission_json,
-               completed, completed_at, reward_xp
+               completed, completed_at, reward_xp,
+               main_mission_id, main_mission_json, main_completed, main_completed_at, main_reward_xp,
+               sub_missions_json, sub_progress_json, sub_total_reward_xp
         FROM daily_missions
         WHERE user_id = ? AND mission_date = ?
         """,
@@ -352,16 +374,31 @@ def _is_mission_completed(objective: Dict[str, object], metrics: Dict[str, int])
 
 def _mission_row_to_payload(row: sqlite3.Row, metrics: Dict[str, int]) -> Dict[str, object]:
     candidates = json.loads(row["candidates_json"] or "[]")
-    selected = json.loads(row["selected_mission_json"]) if row["selected_mission_json"] else None
+    legacy_selected = json.loads(row["selected_mission_json"]) if row["selected_mission_json"] else None
+    selected_main = json.loads(row["main_mission_json"]) if row["main_mission_json"] else legacy_selected
+    selected_subs = json.loads(row["sub_missions_json"] or "[]")
+    sub_progress = json.loads(row["sub_progress_json"] or "{}")
+    main_completed = bool(row["main_completed"] if row["main_mission_id"] is not None else row["completed"])
+    completed_sub_count = sum(1 for item in selected_subs if sub_progress.get(item["id"], {}).get("completed"))
     return {
         "date": row["mission_date"],
         "difficulty": row["difficulty"],
         "candidates": candidates,
-        "selected_mission_id": row["selected_mission_id"],
-        "selected_mission": selected,
-        "completed": bool(row["completed"]),
-        "completed_at": row["completed_at"],
-        "reward_xp": int(row["reward_xp"]),
+        "selected_main_mission_id": row["main_mission_id"] or row["selected_mission_id"],
+        "selected_main_mission": selected_main,
+        "selected_sub_missions": selected_subs,
+        "main_completed": main_completed,
+        "main_completed_at": row["main_completed_at"] or row["completed_at"],
+        "main_reward_xp": int(row["main_reward_xp"] or row["reward_xp"] or 0),
+        "sub_progress": sub_progress,
+        "sub_completed_count": completed_sub_count,
+        "sub_total_reward_xp": int(row["sub_total_reward_xp"] or 0),
+        "all_completed": bool(main_completed and completed_sub_count == len(selected_subs)),
+        "reward_xp": int(row["main_reward_xp"] or row["reward_xp"] or 0) + int(row["sub_total_reward_xp"] or 0),
+        # backward compatibility fields
+        "selected_mission_id": row["main_mission_id"] or row["selected_mission_id"],
+        "selected_mission": selected_main,
+        "completed": bool(main_completed and completed_sub_count == len(selected_subs)),
         "metrics": metrics,
     }
 
@@ -400,25 +437,56 @@ def set_daily_mission_difficulty(user_id: int, difficulty: str) -> Dict[str, obj
     return payload
 
 
-def select_daily_mission(user_id: int, mission_id: str) -> Dict[str, object]:
+def select_daily_mission(user_id: int, main_mission_id: str, sub_mission_ids: Optional[List[str]] = None) -> Dict[str, object]:
     mission_date = _today_str()
+    selected_sub_ids = sub_mission_ids or []
     with get_conn() as conn:
         row = _ensure_daily_mission(conn, user_id, mission_date)
         candidates = json.loads(row["candidates_json"] or "[]")
-        if row["selected_mission_id"]:
-            selected = row["selected_mission_id"]
-            if selected != mission_id:
+        if row["main_mission_id"] or row["selected_mission_id"]:
+            selected = row["main_mission_id"] or row["selected_mission_id"]
+            if selected != main_mission_id:
                 raise ValueError("本日のミッションはすでに選択済みです")
-        chosen = next((c for c in candidates if c["id"] == mission_id), None)
-        if chosen is None:
+            existing_subs = json.loads(row["sub_missions_json"] or "[]")
+            existing_ids = sorted([item["id"] for item in existing_subs])
+            if sorted(selected_sub_ids) != existing_ids:
+                raise ValueError("本日のサブミッションはすでに選択済みです")
+        chosen_main = next((c for c in candidates if c["id"] == main_mission_id), None)
+        if chosen_main is None:
             raise ValueError("候補にないミッションです")
+        candidate_ids = {c["id"] for c in candidates}
+        filtered_sub_ids = []
+        for sub_id in selected_sub_ids:
+            if sub_id == main_mission_id:
+                raise ValueError("メインと同じミッションはサブにできません")
+            if sub_id not in candidate_ids:
+                raise ValueError("候補にないサブミッションです")
+            if sub_id not in filtered_sub_ids:
+                filtered_sub_ids.append(sub_id)
+        if len(filtered_sub_ids) > 2:
+            raise ValueError("サブミッションは最大2件です")
+        chosen_subs = [c for c in candidates if c["id"] in set(filtered_sub_ids)]
+        sub_progress = {item["id"]: {"completed": False, "completed_at": None, "reward_xp": 0} for item in chosen_subs}
         conn.execute(
             """
             UPDATE daily_missions
-            SET selected_mission_id = ?, selected_mission_json = ?, updated_at = ?
+            SET selected_mission_id = ?, selected_mission_json = ?,
+                main_mission_id = ?, main_mission_json = ?, main_completed = 0, main_completed_at = NULL, main_reward_xp = 0,
+                sub_missions_json = ?, sub_progress_json = ?, sub_total_reward_xp = 0,
+                completed = 0, completed_at = NULL, reward_xp = 0, updated_at = ?
             WHERE user_id = ? AND mission_date = ?
             """,
-            (mission_id, json.dumps(chosen, ensure_ascii=False), iso_now(), user_id, mission_date),
+            (
+                main_mission_id,
+                json.dumps(chosen_main, ensure_ascii=False),
+                main_mission_id,
+                json.dumps(chosen_main, ensure_ascii=False),
+                json.dumps(chosen_subs, ensure_ascii=False),
+                json.dumps(sub_progress, ensure_ascii=False),
+                iso_now(),
+                user_id,
+                mission_date,
+            ),
         )
         updated = _ensure_daily_mission(conn, user_id, mission_date)
         metrics = _today_metrics(conn, user_id, mission_date)
@@ -429,17 +497,63 @@ def evaluate_daily_mission(user_id: int) -> Optional[Dict[str, object]]:
     mission_date = _today_str()
     with get_conn() as conn:
         row = _ensure_daily_mission(conn, user_id, mission_date)
-        if not row["selected_mission_json"] or int(row["completed"]) == 1:
+        main_json = row["main_mission_json"] or row["selected_mission_json"]
+        if not main_json:
             return None
-        selected = json.loads(row["selected_mission_json"])
+        selected_main = json.loads(main_json)
+        selected_subs = json.loads(row["sub_missions_json"] or "[]")
+        sub_progress = json.loads(row["sub_progress_json"] or "{}")
         metrics = _today_metrics(conn, user_id, mission_date)
-        if not _is_mission_completed(selected.get("objective", {}), metrics):
-            return None
-
-        reward_xp = int(selected.get("reward_xp") or DAILY_MISSION_REWARDS.get(row["difficulty"], 30))
         progress = _load_progress(conn, user_id)
         prev_level = int(progress["level"])
-        new_total = int(progress["total_xp"]) + reward_xp
+        gained_xp = 0
+        main_completed_now = False
+        newly_completed_sub_ids: List[str] = []
+
+        main_completed = bool(row["main_completed"] if row["main_mission_id"] is not None else row["completed"])
+        if not main_completed and _is_mission_completed(selected_main.get("objective", {}), metrics):
+            main_reward_xp = int(selected_main.get("reward_xp") or DAILY_MISSION_REWARDS.get(row["difficulty"], 30))
+            gained_xp += main_reward_xp
+            main_completed_now = True
+            conn.execute(
+                """
+                UPDATE daily_missions
+                SET main_completed = 1, main_completed_at = ?, main_reward_xp = ?,
+                    completed = 1, completed_at = ?, reward_xp = ?, updated_at = ?
+                WHERE user_id = ? AND mission_date = ?
+                """,
+                (iso_now(), main_reward_xp, iso_now(), main_reward_xp, iso_now(), user_id, mission_date),
+            )
+
+        for sub in selected_subs:
+            sub_id = sub["id"]
+            status = sub_progress.get(sub_id, {"completed": False, "completed_at": None, "reward_xp": 0})
+            if status.get("completed"):
+                continue
+            if _is_mission_completed(sub.get("objective", {}), metrics):
+                sub_reward_xp = max(5, int(int(sub.get("reward_xp", 0)) * SUB_MISSION_XP_RATE))
+                status = {"completed": True, "completed_at": iso_now(), "reward_xp": sub_reward_xp}
+                sub_progress[sub_id] = status
+                gained_xp += sub_reward_xp
+                newly_completed_sub_ids.append(sub_id)
+
+        sub_total_reward_xp = sum(int(v.get("reward_xp", 0)) for v in sub_progress.values() if v.get("completed"))
+        all_sub_completed = all(sub_progress.get(item["id"], {}).get("completed") for item in selected_subs)
+        main_completed_after = main_completed or main_completed_now
+        all_completed = main_completed_after and all_sub_completed
+        conn.execute(
+            """
+            UPDATE daily_missions
+            SET sub_progress_json = ?, sub_total_reward_xp = ?, completed = ?, updated_at = ?
+            WHERE user_id = ? AND mission_date = ?
+            """,
+            (json.dumps(sub_progress, ensure_ascii=False), sub_total_reward_xp, 1 if all_completed else 0, iso_now(), user_id, mission_date),
+        )
+
+        if gained_xp == 0:
+            return None
+
+        new_total = int(progress["total_xp"]) + gained_xp
         new_level = level_from_total_xp(new_total)
         conn.execute(
             """
@@ -449,18 +563,14 @@ def evaluate_daily_mission(user_id: int) -> Optional[Dict[str, object]]:
             """,
             (new_total, new_level, iso_now(), user_id),
         )
-        conn.execute(
-            """
-            UPDATE daily_missions
-            SET completed = 1, completed_at = ?, reward_xp = ?, updated_at = ?
-            WHERE user_id = ? AND mission_date = ?
-            """,
-            (iso_now(), reward_xp, iso_now(), user_id, mission_date),
-        )
     return {
         "mission_completed": True,
-        "mission": selected,
-        "reward_xp": reward_xp,
+        "main_completed_now": main_completed_now,
+        "newly_completed_sub_ids": newly_completed_sub_ids,
+        "all_completed": all_completed,
+        "main_mission": selected_main,
+        "sub_missions": selected_subs,
+        "reward_xp": gained_xp,
         "leveled_up": new_level > prev_level,
         "total_xp": new_total,
         "level": new_level,
@@ -1048,7 +1158,9 @@ if FastAPI is not None:
         difficulty: str
 
     class DailyMissionSelectRequest(BaseModel):
-        mission_id: str
+        main_mission_id: Optional[str] = None
+        sub_mission_ids: List[str] = Field(default_factory=list)
+        mission_id: Optional[str] = None
 
     def require_user(authorization: Optional[str]) -> int:
         user_id = user_id_from_token(authorization)
@@ -1115,7 +1227,10 @@ if FastAPI is not None:
     ) -> Dict[str, object]:
         user_id = require_user(authorization)
         try:
-            return select_daily_mission(user_id, payload.mission_id)
+            main_id = payload.main_mission_id or payload.mission_id
+            if not main_id:
+                raise HTTPException(status_code=400, detail="main_mission_idは必須です")
+            return select_daily_mission(user_id, main_id, payload.sub_mission_ids)
         except ValueError as error:
             raise HTTPException(status_code=400, detail=str(error)) from error
 
@@ -1323,10 +1438,12 @@ class FallbackTodoHandler(BaseHTTPRequestHandler):
                 return self._json(401, {"detail": "認証が必要です"})
             try:
                 payload = self._parse_json_body()
-                mission_id = str(payload.get("mission_id", "")).strip()
-                if not mission_id:
-                    return self._json(400, {"detail": "mission_idは必須です"})
-                return self._json(200, select_daily_mission(user_id, mission_id))
+                main_id = str(payload.get("main_mission_id") or payload.get("mission_id") or "").strip()
+                if not main_id:
+                    return self._json(400, {"detail": "main_mission_idは必須です"})
+                sub_ids_raw = payload.get("sub_mission_ids", [])
+                sub_ids = [str(v).strip() for v in sub_ids_raw if str(v).strip()] if isinstance(sub_ids_raw, list) else []
+                return self._json(200, select_daily_mission(user_id, main_id, sub_ids))
             except (json.JSONDecodeError, UnicodeDecodeError):
                 return self._json(400, {"detail": "JSONが不正です"})
             except ValueError as error:

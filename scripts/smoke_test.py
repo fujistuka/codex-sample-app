@@ -79,11 +79,17 @@ def main() -> int:
         mission = request_json("GET", "/api/daily-mission", token=token)
         print(f"[OK] daily mission loaded: difficulty={mission['difficulty']} candidates={len(mission['candidates'])}")
         mission = request_json("POST", "/api/daily-mission/difficulty", token=token, payload={"difficulty": "easy"})
-        pick_id = mission["candidates"][0]["id"]
-        mission = request_json("POST", "/api/daily-mission/select", token=token, payload={"mission_id": pick_id})
-        if mission["selected_mission_id"] != pick_id:
+        main_id = mission["candidates"][0]["id"]
+        sub_ids = [mission["candidates"][1]["id"]] if len(mission["candidates"]) > 1 else []
+        mission = request_json(
+            "POST",
+            "/api/daily-mission/select",
+            token=token,
+            payload={"main_mission_id": main_id, "sub_mission_ids": sub_ids},
+        )
+        if mission["selected_main_mission_id"] != main_id:
             raise RuntimeError("daily mission selection failed")
-        print(f"[OK] daily mission select: {pick_id}")
+        print(f"[OK] daily mission select: main={main_id} sub={len(sub_ids)}")
 
         review = request_json("GET", "/api/review?days=7", token=token)
         if "metrics" not in review or "character_comment" not in review:

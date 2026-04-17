@@ -457,6 +457,15 @@
                 <option value="2" selected>中</option>
                 <option value="3">低</option>
               </select>
+              <select id="categorySelect">
+                <option value="">カテゴリ(任意)</option>
+                <option value="生活">生活</option>
+                <option value="仕事">仕事</option>
+                <option value="勉強">勉強</option>
+                <option value="健康">健康</option>
+                <option value="__custom__">自由入力</option>
+              </select>
+              <input id="categoryCustom" class="grow hidden" placeholder="自由カテゴリ" />
               <input id="tags" class="grow" placeholder="タグ（カンマ区切り）" />
               <button id="createBtn" class="primary">追加</button>
             </div>
@@ -579,6 +588,37 @@
         challenge: 'challenge',
       };
 
+      const CHARACTER_DIALOGUE = {
+        initial: {
+          idle: 'こんにちは、先輩。西宮京子です。今日も一歩ずつ頑張りましょう…！',
+          completed: 'ありがとうございます！先輩の進め方、私も見習いたいです。',
+          badge: 'バッジ獲得すごいです…！私も少し自信がついてきました。',
+          mission: 'メイン目標から丁寧にいきましょう。私もついていきます！',
+          growth_event: '先輩のおかげで、苦手にも挑戦してみたくなりました。'
+        },
+        middle: {
+          idle: '先輩、お疲れさまです！今日も一緒に進めましょう！',
+          completed: 'ナイス完了です！私も挑戦する勇気が湧いてきました！',
+          badge: 'バッジ、かっこいいです！次も狙っていきましょう♪',
+          mission: 'メインをしっかり、余裕があればサブも行きましょう！',
+          growth_event: 'ちょっとずつだけど、私も変われてる気がします！'
+        },
+        late: {
+          idle: '先輩のペース、ほんとに参考になります。一緒に今日も進めたいです！',
+          completed: '完了報告うれしいです！私ももっと頼れる後輩になりますね。',
+          badge: 'またバッジ！積み重ねの強さ、実感しますね。',
+          mission: 'メイン達成を軸に、サブで伸ばしていきましょう！',
+          growth_event: '苦手だったことにも向き合えるようになってきました。'
+        },
+        partner: {
+          idle: '京子、準備OKです。今日は相棒としてしっかり支えます！',
+          completed: 'さすがです！この連携、かなり強いですね。',
+          badge: 'コレクションが育ってきましたね。次の目標も一緒に取りにいきましょう！',
+          mission: 'メインを決めて、サブで加速。最高の流れです！',
+          growth_event: '先輩と一緒なら、どんな挑戦も楽しめます！'
+        },
+      };
+
       const CHARACTER_MOODS = {
         normal: {
           label: '通常',
@@ -676,6 +716,8 @@
       const pageInfo = document.getElementById('pageInfo');
       const me = document.getElementById('me');
       const titleCalendar = document.getElementById('titleCalendar');
+      const categorySelect = document.getElementById('categorySelect');
+      const categoryCustom = document.getElementById('categoryCustom');
 
       const heroStateBadge = document.getElementById('heroStateBadge');
       const heroMainMessage = document.getElementById('heroMainMessage');
@@ -723,6 +765,8 @@
       const reviewActiveDays = document.getElementById('reviewActiveDays');
       const reviewTopTag = document.getElementById('reviewTopTag');
       const reviewCharacterComment = document.getElementById('reviewCharacterComment');
+
+      let characterGrowthStage = 'initial';
 
       function setTodayToCalendar() {
         const now = new Date();
@@ -786,8 +830,9 @@
         const moodConfig = applyCharacterMood(mood);
         lastEventType = eventType;
         talkIndex = 0;
+        const stageLines = CHARACTER_DIALOGUE[characterGrowthStage] || CHARACTER_DIALOGUE.initial;
         const fallbackMessage = CHARACTER_MOODS.normal.messages[eventType] || CHARACTER_MOODS.normal.messages.idle;
-        const baseMessage = moodConfig.messages[eventType] || moodConfig.messages.idle || fallbackMessage;
+        const baseMessage = stageLines[eventType] || moodConfig.messages[eventType] || moodConfig.messages.idle || fallbackMessage;
         const message = extraText ? `${baseMessage} ${extraText}` : baseMessage;
         heroMainMessage.textContent = message;
       }
@@ -840,6 +885,8 @@
         if (!data?.selected_main_mission_id) {
           return { mood: 'normal', message: '今日の目標を選ぼう。今の余力に合った難易度からでOK！' };
         }
+        const hasStudyMission = [data.selected_main_mission, ...(data.selected_sub_missions || [])]
+          .some((m) => m?.objective?.category === '勉強');
         if (data.all_completed) {
           return { mood: 'excited', message: 'メインもサブも全部達成！最高の積み上げだね🎉' };
         }
@@ -851,6 +898,9 @@
         }
         if ((data.sub_completed_count || 0) > 0) {
           return { mood: 'encouraging', message: 'サブ達成ナイス！次はメインを仕上げよう。' };
+        }
+        if (hasStudyMission) {
+          return { mood: 'encouraging', message: '勉強カテゴリに挑戦中だね。私も苦手克服、いっしょに頑張る！' };
         }
         if (data.completed) {
           return { mood: 'excited', message: '今日のミッション達成！この調子で次の一歩もいこう✨' };
@@ -1095,18 +1145,28 @@
         const currentInLevel = progress.total_xp % 100;
         xpBar.style.width = `${currentInLevel}%`;
         badgeSummary.textContent = `バッジ ${progress.badge_summary.earned}/${progress.badge_summary.total}`;
+        if (progress.character_state) {
+          characterGrowthStage = progress.character_state.growth_stage || 'initial';
+          heroStateBadge.textContent = `${progress.character_state.name}（${progress.character_state.growth_label}）`;
+        }
 
         badgeList.innerHTML = '';
-        if (!progress.badges.length) {
+        const badgeItems = progress.all_badges || [];
+        if (!badgeItems.length) {
           badgeList.innerHTML = '<span class="muted">まだバッジはありません</span>';
           renderAchievementCalendar(progress.achievement_dates);
           return;
         }
 
-        progress.badges.forEach((b) => {
+        badgeItems.forEach((b) => {
           const card = document.createElement('div');
           card.className = 'badge-card';
-          card.innerHTML = `<span class="badge-icon">${b.icon || '🏅'}</span><strong>${b.name}</strong>`;
+          card.style.opacity = b.earned ? '1' : '0.72';
+          card.innerHTML = `
+            <span class="badge-icon">${b.icon || '🏅'}</span><strong>${b.name}</strong>
+            <p class="muted" style="margin:4px 0 0;">${b.description || ''}</p>
+            <p class="muted" style="margin:2px 0 0;">進捗 ${b.current}/${b.target} ${b.earned ? '✅' : ''}</p>
+          `;
           badgeList.appendChild(card);
         });
         renderAchievementCalendar(progress.achievement_dates);
@@ -1216,15 +1276,21 @@
       document.getElementById('createBtn').addEventListener('click', async () => {
         createError.textContent = '';
         try {
+          const categoryValue = categorySelect.value === '__custom__' ? categoryCustom.value.trim() : categorySelect.value;
+          const rawTags = document.getElementById('tags').value;
+          const composedTags = [categoryValue, rawTags].filter(Boolean).join(',');
           const payload = {
             title: document.getElementById('title').value,
             due_date: document.getElementById('dueDate').value || null,
             priority: Number(document.getElementById('priority').value),
-            tags: document.getElementById('tags').value,
+            tags: composedTags,
           };
           const created = await api('/api/todos', { method: 'POST', body: JSON.stringify(payload) });
           document.getElementById('title').value = '';
           document.getElementById('tags').value = '';
+          categoryCustom.value = '';
+          categoryCustom.classList.add('hidden');
+          categorySelect.value = '';
           state.page = 1;
           await loadTodos();
           await loadProgress();
@@ -1255,6 +1321,11 @@
       document.getElementById('searchBtn').addEventListener('click', async () => {
         state.page = 1;
         await loadTodos();
+      });
+
+      categorySelect.addEventListener('change', () => {
+        const custom = categorySelect.value === '__custom__';
+        categoryCustom.classList.toggle('hidden', !custom);
       });
 
       difficultyButtons.addEventListener('click', async (e) => {
@@ -1376,6 +1447,11 @@
             showToast(`タスク完了！ +${r.gained_xp}XP`, 'success');
             if (r.streak_days >= 2) {
               showToast(`${r.streak_days}日連続達成！`, 'success', 1800);
+            }
+            if (r.growth_events?.length) {
+              const ev = r.growth_events[0];
+              showToast(`成長イベント: ${ev.text}`, 'badge', 2800);
+              setCharacterState({ eventType: 'growth_event', mood: 'happy', extraText: ev.text });
             }
             if (r.new_badges?.length) {
               setCharacterState({

@@ -14,7 +14,11 @@ from app.gamification import (
     BASE_XP,
     DAILY_MISSION_LIBRARY,
     DAILY_MISSION_REWARDS,
+    GROWTH_EVENT_BADGES,
+    RECOMMENDED_CATEGORIES,
+    badge_progress,
     calculate_reward,
+    character_growth_stage,
     character_event_payload,
     evaluate_badges,
     level_from_total_xp,
@@ -164,6 +168,17 @@ def init_db() -> None:
                 last_login_on TEXT,
                 login_streak_days INTEGER NOT NULL DEFAULT 0,
                 updated_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS character_growth_events (
+                user_id INTEGER NOT NULL,
+                event_code TEXT NOT NULL,
+                triggered_at TEXT NOT NULL,
+                PRIMARY KEY(user_id, event_code),
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )
             """
@@ -350,11 +365,29 @@ def _today_metrics(conn: sqlite3.Connection, user_id: int, mission_date: str) ->
         "SELECT COUNT(*) AS cnt FROM todos WHERE user_id = ? AND completed = 0",
         (user_id,),
     ).fetchone()["cnt"]
+    category_completed_today = {"生活": 0, "仕事": 0, "勉強": 0, "健康": 0}
+    completed_rows = conn.execute(
+        """
+        SELECT t.tags
+        FROM reward_logs rl
+        JOIN todos t ON t.id = rl.todo_id
+        WHERE rl.user_id = ? AND substr(rl.created_at, 1, 10) = ?
+        """,
+        (user_id, mission_date),
+    ).fetchall()
+    for row in completed_rows:
+        bucket = _category_bucket(row["tags"] or "")
+        if bucket in category_completed_today:
+            category_completed_today[bucket] += 1
     return {
         "created_today": int(created_today),
         "completed_today": int(completed_today),
         "high_priority_completed_today": int(high_priority_completed_today),
         "active_todos": int(active_todos),
+        "category_life_completed_today": category_completed_today["生活"],
+        "category_work_completed_today": category_completed_today["仕事"],
+        "category_study_completed_today": category_completed_today["勉強"],
+        "category_health_completed_today": category_completed_today["健康"],
     }
 
 
@@ -369,6 +402,17 @@ def _is_mission_completed(objective: Dict[str, object], metrics: Dict[str, int])
         return metrics["high_priority_completed_today"] >= target
     if kind == "active_todos_lte":
         return metrics["active_todos"] <= target
+    if kind == "category_completed_today":
+        category = str(objective.get("category", ""))
+        key = {
+            "生活": "category_life_completed_today",
+            "仕事": "category_work_completed_today",
+            "勉強": "category_study_completed_today",
+            "健康": "category_health_completed_today",
+        }.get(category)
+        if not key:
+            return False
+        return int(metrics.get(key, 0)) >= target
     return False
 
 
@@ -416,7 +460,7 @@ def set_daily_mission_difficulty(user_id: int, difficulty: str) -> Dict[str, obj
     safe_diff = _normalize_difficulty(difficulty)
     with get_conn() as conn:
         row = _ensure_daily_mission(conn, user_id, mission_date, safe_diff)
-        if row["selected_mission_id"] is None:
+        if row["main_mission_id"] is None and row["selected_mission_id"] is None:
             candidates = _build_daily_candidates(user_id, mission_date, safe_diff)
             conn.execute(
                 """
@@ -601,6 +645,56 @@ def _load_progress(conn: sqlite3.Connection, user_id: int) -> sqlite3.Row:
     return row
 
 
+def _category_bucket(tags_text: str) -> Optional[str]:
+    tags = [tag.strip() for tag in (tags_text or "").split(",") if tag.strip()]
+    for bucket, children in RECOMMENDED_CATEGORIES.items():
+        if bucket in tags:
+            return bucket
+        if any(child in tags for child in children):
+            return bucket
+    return None
+
+
+def _build_badge_metrics(conn: sqlite3.Connection, user_id: int, total_xp: int, level: int, streak_days: int, completed_tasks: int) -> Dict[str, int]:
+    mission_completed_count = int(
+        conn.execute("SELECT COUNT(*) AS cnt FROM daily_missions WHERE user_id = ? AND main_completed = 1", (user_id,)).fetchone()["cnt"]
+    )
+    challenge_mission_completed_count = int(
+        conn.execute(
+            "SELECT COUNT(*) AS cnt FROM daily_missions WHERE user_id = ? AND main_completed = 1 AND difficulty = 'challenge'",
+            (user_id,),
+        ).fetchone()["cnt"]
+    )
+    category_counts = {"生活": 0, "仕事": 0, "勉強": 0, "健康": 0}
+    tag_rows = conn.execute(
+        """
+        SELECT t.tags
+        FROM reward_logs rl
+        JOIN todos t ON t.id = rl.todo_id
+        WHERE rl.user_id = ?
+        """,
+        (user_id,),
+    ).fetchall()
+    for row in tag_rows:
+        bucket = _category_bucket(row["tags"] or "")
+        if bucket in category_counts:
+            category_counts[bucket] += 1
+    category_balance_count = sum(1 for v in category_counts.values() if v >= 1)
+    return {
+        "streak_days": streak_days,
+        "mission_completed_count": mission_completed_count,
+        "challenge_mission_completed_count": challenge_mission_completed_count,
+        "completed_tasks": completed_tasks,
+        "level": level,
+        "total_xp": total_xp,
+        "category_life_completed": category_counts["生活"],
+        "category_work_completed": category_counts["仕事"],
+        "category_study_completed": category_counts["勉強"],
+        "category_health_completed": category_counts["健康"],
+        "category_balance_count": category_balance_count,
+    }
+
+
 def get_progress(user_id: int) -> Dict[str, object]:
     with get_conn() as conn:
         row = _load_progress(conn, user_id)
@@ -629,22 +723,37 @@ def get_progress(user_id: int) -> Dict[str, object]:
             "SELECT login_streak_days, last_login_on FROM login_activity WHERE user_id = ?",
             (user_id,),
         ).fetchone()
+        total_xp = int(row["total_xp"])
+        current_level = int(row["level"])
+        streak_days = int(row["streak_days"])
+        completed_tasks = int(row["completed_tasks"])
+        metrics = _build_badge_metrics(conn, user_id, total_xp, current_level, streak_days, completed_tasks)
+        metrics["earned_badges"] = len(badges)
+        all_badges = badge_progress(metrics, [b["code"] for b in badges])
 
-    total_xp = int(row["total_xp"])
-    current_level = int(row["level"])
     login_streak_days = int(login_row["login_streak_days"]) if login_row else 0
     last_login_on = login_row["last_login_on"] if login_row else None
+    growth_stage, growth_label = character_growth_stage(metrics)
     return {
         "total_xp": total_xp,
         "level": current_level,
-        "streak_days": int(row["streak_days"]),
-        "completed_tasks": int(row["completed_tasks"]),
+        "streak_days": streak_days,
+        "completed_tasks": completed_tasks,
         "login_streak_days": login_streak_days,
         "last_login_on": last_login_on,
         "xp_to_next_level": xp_to_next_level(total_xp),
         "badges": [{"code": b["code"], "name": b["name"], "icon": b["icon"], "awarded_at": b["awarded_at"]} for b in badges],
+        "all_badges": all_badges,
         "badge_summary": {"earned": len(badges), "total": int(total_badges)},
         "achievement_dates": [r["completed_on"] for r in achieved_dates],
+        "character_state": {
+            "name": "西宮京子",
+            "role": "後輩",
+            "growth_stage": growth_stage,
+            "growth_label": growth_label,
+            "themes": ["自信", "苦手への挑戦", "自己管理"],
+        },
+        "recommended_categories": RECOMMENDED_CATEGORIES,
     }
 
 
@@ -803,7 +912,8 @@ def grant_completion_reward(user_id: int, todo_id: int) -> Dict[str, object]:
             (user_id, today.isoformat()),
         )
 
-        badge_codes = evaluate_badges(completed_tasks, streak_days, new_level)
+        badge_metrics = _build_badge_metrics(conn, user_id, new_total_xp, new_level, streak_days, completed_tasks)
+        badge_codes = evaluate_badges(badge_metrics)
         new_badges: List[Dict[str, str]] = []
         for code in badge_codes:
             awarded_at = iso_now()
@@ -817,6 +927,23 @@ def grant_completion_reward(user_id: int, todo_id: int) -> Dict[str, object]:
             if cur.rowcount > 0:
                 name_row = conn.execute("SELECT name FROM achievement_master WHERE code = ?", (code,)).fetchone()
                 new_badges.append({"code": code, "name": name_row["name"] if name_row else code, "awarded_at": awarded_at})
+
+        growth_events: List[Dict[str, str]] = []
+        for badge in new_badges:
+            event_code = GROWTH_EVENT_BADGES.get(badge["code"])
+            if not event_code:
+                continue
+            cur = conn.execute(
+                "INSERT OR IGNORE INTO character_growth_events(user_id, event_code, triggered_at) VALUES (?, ?, ?)",
+                (user_id, event_code, iso_now()),
+            )
+            if cur.rowcount > 0:
+                growth_text = {
+                    "confidence_step": "先輩の継続に引っぱられて、私もちょっと自信が出てきました！",
+                    "challenge_first_step": "苦手なことにも一歩踏み出せました。ありがとうございます！",
+                    "confidence_breakthrough": "ここまで続けられて、私も変われた気がします。",
+                }.get(event_code, "一緒に成長できてうれしいです。")
+                growth_events.append({"event_code": event_code, "text": growth_text})
 
         conn.execute(
             """
@@ -849,6 +976,7 @@ def grant_completion_reward(user_id: int, todo_id: int) -> Dict[str, object]:
         "xp_to_next_level": xp_to_next_level(new_total_xp),
         "leveled_up": new_level > prev_level,
         "new_badges": new_badges,
+        "growth_events": growth_events,
     }
     summary["character_event"] = character_event_payload(summary)
     return summary

@@ -75,6 +75,8 @@ def main() -> int:
         before_progress = request_json("GET", "/api/progress", token=token)
         print(f"[OK] progress before: xp={before_progress['total_xp']} lv={before_progress['level']}")
         print(f"[OK] login streak: {before_progress['login_streak_days']}日")
+        if "all_badges" not in before_progress or "character_state" not in before_progress:
+            raise RuntimeError("progress payload missing all_badges or character_state")
 
         mission = request_json("GET", "/api/daily-mission", token=token)
         print(f"[OK] daily mission loaded: difficulty={mission['difficulty']} candidates={len(mission['candidates'])}")

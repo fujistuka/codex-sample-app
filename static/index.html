@@ -1,0 +1,1555 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ToDo MVP</title>
+    <style>
+      :root {
+        --border: #e5e7eb;
+        --text: #111827;
+        --muted: #6b7280;
+        --accent: #2563eb;
+        --soft: #f8fbff;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        max-width: 1080px;
+        margin: 24px auto;
+        color: var(--text);
+        padding: 0 16px;
+        background: #fff;
+      }
+      h1, h2, h3 { margin: 8px 0 16px; }
+      .card {
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 16px;
+        margin-bottom: 16px;
+        background: #fff;
+      }
+      .row { display: flex; gap: 8px; flex-wrap: wrap; }
+      .layout { display: grid; grid-template-columns: 1fr 320px; gap: 16px; }
+      .side { position: sticky; top: 16px; align-self: start; }
+      input, select, button {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-size: 14px;
+      }
+      input, select { background: #fff; }
+      button { cursor: pointer; background: #f9fafb; }
+      button.primary { background: var(--accent); color: white; border-color: var(--accent); }
+      .grow { flex: 1; min-width: 160px; }
+      .muted { color: var(--muted); font-size: 12px; }
+      .error { color: #b91c1c; }
+      table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+      th, td { border-top: 1px solid var(--border); padding: 10px 8px; text-align: left; vertical-align: top; }
+      .chip { display: inline-block; padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; margin-right: 4px; font-size: 12px; }
+      .done { text-decoration: line-through; color: var(--muted); }
+      .hidden { display: none; }
+      .calendar-inline { width: 220px; }
+
+      .hero {
+        border: 1px solid #dbeafe;
+        background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+      }
+      .hero[data-mood='happy'] { border-color: #bfdbfe; }
+      .hero[data-mood='encouraging'] { border-color: #93c5fd; }
+      .hero[data-mood='tired'] { border-color: #d1d5db; background: linear-gradient(180deg, #fafafa 0%, #ffffff 100%); }
+      .hero[data-mood='excited'] { border-color: #a5b4fc; background: linear-gradient(180deg, #f5f3ff 0%, #ffffff 100%); }
+      .hero-grid { display: grid; grid-template-columns: 38% 62%; gap: 18px; align-items: center; }
+      .hero-badge {
+        display: inline-block;
+        border: 1px solid #bfdbfe;
+        background: #eff6ff;
+        color: #1d4ed8;
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 12px;
+      }
+      .hero-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+      .hero-box {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: #fff;
+        padding: 10px;
+      }
+      .hero-label { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+      .hero-value { font-size: 14px; }
+      .character-stage {
+        position: relative;
+        transition: transform 220ms ease, box-shadow 220ms ease;
+      }
+      .character-stage.celebrate {
+        transform: translateY(-2px) scale(1.02);
+        box-shadow: 0 8px 20px rgba(37, 99, 235, 0.14);
+      }
+      .character-stage.xp-burst::after {
+        content: attr(data-xp);
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+        color: #1d4ed8;
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 12px;
+        animation: floatUp 900ms ease forwards;
+      }
+      @keyframes floatUp {
+        from { transform: translateY(8px); opacity: 0; }
+        20% { opacity: 1; }
+        to { transform: translateY(-14px); opacity: 0; }
+      }
+      .character-image-main {
+        width: 220px;
+        height: 220px;
+        object-fit: cover;
+        border-radius: 16px;
+        border: 1px solid var(--border);
+        display: block;
+        margin: 0 auto;
+        background: white;
+        cursor: pointer;
+      }
+      .main-message {
+        position: relative;
+        background: white;
+        border: 1px solid #bfdbfe;
+        border-radius: 12px;
+        padding: 14px;
+        font-size: 17px;
+        line-height: 1.7;
+        margin-top: 10px;
+      }
+      .main-message::after {
+        content: '';
+        position: absolute;
+        left: -8px;
+        top: -8px;
+        border-width: 8px;
+        border-style: solid;
+        border-color: transparent #bfdbfe #bfdbfe transparent;
+        transform: rotate(45deg);
+      }
+      .mission-card {
+        border: 1px solid #dbeafe;
+        background: #f9fbff;
+      }
+      .mission-main-card {
+        border: 1px solid #bfdbfe;
+        border-radius: 12px;
+        padding: 12px;
+        background: #fff;
+        margin-bottom: 10px;
+      }
+      .mission-main-card.completed {
+        border-color: #86efac;
+        background: #f0fdf4;
+      }
+      .mission-main-title {
+        font-size: 16px;
+        font-weight: 700;
+        margin: 0 0 8px;
+      }
+      .mission-main-meta {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+      }
+      .mission-main-box {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px;
+        background: #fff;
+      }
+      .mission-main-label { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+      .mission-main-value { font-size: 13px; }
+      .mission-progress {
+        height: 8px;
+        background: #eef2ff;
+        border-radius: 999px;
+        overflow: hidden;
+        margin-top: 8px;
+      }
+      .mission-progress > span {
+        display: block;
+        height: 100%;
+        background: #2563eb;
+      }
+      .difficulty-buttons { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+      .difficulty-buttons button.active {
+        border-color: var(--accent);
+        background: #eff6ff;
+        color: #1d4ed8;
+      }
+      .mission-candidates-wrap.hidden { display: none; }
+      .mission-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin: 6px 0 10px;
+        gap: 8px;
+      }
+      .mission-candidates { display: grid; gap: 8px; }
+      .mission-item {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 10px;
+        background: #fff;
+      }
+      .mission-item.selected {
+        border-color: #93c5fd;
+        background: #eff6ff;
+      }
+      .mission-item.completed {
+        border-color: #86efac;
+        background: #f0fdf4;
+      }
+      .mission-item.main {
+        border-color: #60a5fa;
+        box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.15);
+      }
+      .mission-item.sub {
+        border-style: dashed;
+      }
+      .mission-pill {
+        display: inline-block;
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        margin-right: 6px;
+      }
+      .mission-pill.main { border-color: #60a5fa; color: #1d4ed8; background: #eff6ff; }
+      .mission-pill.sub { border-color: #c4b5fd; color: #6d28d9; background: #f5f3ff; }
+      .mission-item-title { font-weight: 600; margin-bottom: 4px; }
+      .review-card {
+        border: 1px solid var(--border);
+        background: #fff;
+      }
+      .review-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+      }
+      .review-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 10px;
+      }
+      .review-box {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 10px;
+        background: #fff;
+      }
+      .review-label { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+      .review-value { font-size: 16px; font-weight: 600; }
+      .review-comment {
+        border: 1px solid #dbeafe;
+        border-radius: 10px;
+        padding: 10px;
+        background: #f8fbff;
+        margin-top: 10px;
+      }
+
+      .progress {
+        height: 10px;
+        background: #eef2ff;
+        border-radius: 999px;
+        overflow: hidden;
+        margin: 8px 0;
+      }
+      .progress > span { display: block; height: 100%; background: var(--accent); }
+      .status-list { margin: 8px 0; padding: 0; list-style: none; }
+      .status-list li { margin: 4px 0; font-size: 13px; }
+
+      .badge-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+      .badge-card {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 8px;
+        background: #fff;
+        font-size: 12px;
+      }
+      .badge-icon { font-size: 18px; margin-right: 6px; }
+      .flash-highlight {
+        animation: flashBg 1000ms ease;
+      }
+      @keyframes flashBg {
+        0% { box-shadow: 0 0 0 rgba(37, 99, 235, 0); }
+        30% { box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.16); }
+        100% { box-shadow: 0 0 0 rgba(37, 99, 235, 0); }
+      }
+      .level-highlight {
+        animation: levelPulse 900ms ease;
+      }
+      @keyframes levelPulse {
+        0% { color: var(--text); transform: scale(1); }
+        40% { color: #1d4ed8; transform: scale(1.08); }
+        100% { color: var(--text); transform: scale(1); }
+      }
+
+      .toast-layer {
+        position: fixed;
+        right: 16px;
+        bottom: 16px;
+        display: grid;
+        gap: 8px;
+        z-index: 50;
+      }
+      .toast {
+        min-width: 220px;
+        max-width: 320px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: #fff;
+        color: var(--text);
+        padding: 10px 12px;
+        font-size: 13px;
+        box-shadow: 0 6px 16px rgba(17, 24, 39, 0.08);
+      }
+      .toast.success { border-color: #bfdbfe; background: #f8fbff; }
+      .toast.level { border-color: #93c5fd; background: #eff6ff; }
+      .toast.badge { border-color: #c4b5fd; background: #f5f3ff; }
+
+      .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 8px; }
+      .calendar-cell {
+        height: 24px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        font-size: 11px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--muted);
+      }
+      .calendar-cell.filled {
+        background: #dbeafe;
+        border-color: #93c5fd;
+        color: #1d4ed8;
+        font-weight: 600;
+      }
+
+      @media (max-width: 960px) {
+        .layout { grid-template-columns: 1fr; }
+        .side { position: static; }
+        .hero-grid { grid-template-columns: 1fr; }
+        .hero-meta { grid-template-columns: 1fr; }
+        .character-image-main { width: 180px; height: 180px; }
+        .mission-main-meta { grid-template-columns: 1fr; }
+        .review-grid { grid-template-columns: 1fr 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>ToDoアプリ（MVP）</h1>
+
+    <section class="card">
+      <h2>今日の日付</h2>
+      <input id="titleCalendar" class="calendar-inline" type="date" />
+      <p class="muted">タイトルの下のカレンダーです。日付確認に使ってください。</p>
+    </section>
+
+    <section id="loginCard" class="card">
+      <h2>ログイン</h2>
+      <div class="row">
+        <input id="username" value="admin" placeholder="ID" />
+        <input id="password" value="password" type="password" placeholder="パスワード" />
+        <button id="loginBtn" class="primary">ログイン</button>
+      </div>
+      <p class="muted">デフォルト: admin / password</p>
+      <p id="loginError" class="error"></p>
+    </section>
+
+    <section id="appSection" class="hidden">
+      <section id="heroCard" class="card hero" data-mood="normal">
+        <span id="heroStateBadge" class="hero-badge">今日も一歩ずつ</span>
+        <div class="hero-grid">
+          <div id="characterStage" class="character-stage">
+            <img id="characterImage" class="character-image-main" src="/static/character/default-girl.png" alt="応援キャラクター" />
+          </div>
+          <div>
+            <h2 style="margin-top: 8px;">キャラクターと進める今日のタスク</h2>
+            <p id="heroMainMessage" class="main-message">準備OK！まずは1つ完了しよう✨</p>
+            <div class="hero-meta">
+              <div class="hero-box">
+                <p class="hero-label">今日の目標</p>
+                <p id="heroGoal" class="hero-value">1タスク完了</p>
+              </div>
+              <div class="hero-box">
+                <p class="hero-label">次の一歩</p>
+                <p id="heroNextAction" class="hero-value">最優先タスクを選んで完了する</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section class="card mission-card">
+        <h2 style="margin-top: 0;">デイリーミッション</h2>
+        <p id="missionGuide" class="muted">難易度を選んで、今日の目標を決めよう。</p>
+        <section id="selectedMissionPanel" class="mission-main-card hidden">
+          <p class="mission-main-label">今日の選択中ミッション</p>
+          <p id="selectedMissionTitle" class="mission-main-title"></p>
+          <div class="mission-main-meta">
+            <div class="mission-main-box">
+              <p class="mission-main-label">難易度</p>
+              <p id="selectedMissionDifficulty" class="mission-main-value">-</p>
+            </div>
+            <div class="mission-main-box">
+              <p class="mission-main-label">報酬</p>
+              <p id="selectedMissionReward" class="mission-main-value">-</p>
+            </div>
+            <div class="mission-main-box">
+              <p class="mission-main-label">状態</p>
+              <p id="selectedMissionStatus" class="mission-main-value">-</p>
+            </div>
+          </div>
+          <p id="selectedMissionCondition" class="muted" style="margin: 10px 0 4px;"></p>
+          <p id="selectedMissionProgressText" class="muted" style="margin: 0;"></p>
+          <div class="mission-progress"><span id="selectedMissionProgressBar" style="width: 0%"></span></div>
+          <div id="selectedSubMissionSection" style="margin-top: 10px;">
+            <p class="mission-main-label">サブミッション（任意）</p>
+            <div id="selectedSubMissionList" class="mission-candidates"></div>
+          </div>
+        </section>
+        <div class="mission-actions">
+          <div id="difficultyButtons" class="difficulty-buttons" style="margin: 0;">
+            <button data-difficulty="easy" type="button">easy</button>
+            <button data-difficulty="normal" type="button">normal</button>
+            <button data-difficulty="challenge" type="button">challenge</button>
+          </div>
+          <button id="toggleCandidatesBtn" type="button" class="hidden">候補を表示</button>
+        </div>
+        <div id="missionCandidatesWrap" class="mission-candidates-wrap">
+          <p id="missionSelectionHint" class="muted" style="margin: 0 0 8px;">メインを1つ選び、必要ならサブを最大2つ選べます。</p>
+          <div id="missionCandidates" class="mission-candidates"></div>
+          <div style="margin-top: 8px;">
+            <button id="confirmMissionSelectionBtn" type="button" class="primary hidden">この内容で決定</button>
+          </div>
+        </div>
+      </section>
+
+      <div class="layout">
+        <main>
+          <div class="card">
+            <div class="row" style="justify-content: space-between; align-items: center">
+              <h2 style="margin: 0">タスク管理</h2>
+              <div>
+                <span id="me" class="muted"></span>
+                <button id="logoutBtn">ログアウト</button>
+              </div>
+            </div>
+          </div>
+
+          <section class="card">
+            <h2>新規ToDo</h2>
+            <div class="row">
+              <input id="title" class="grow" placeholder="タイトル" />
+              <input id="dueDate" type="date" />
+              <select id="priority">
+                <option value="1">高</option>
+                <option value="2" selected>中</option>
+                <option value="3">低</option>
+              </select>
+              <select id="categorySelect">
+                <option value="">カテゴリ(任意)</option>
+                <option value="生活">生活</option>
+                <option value="仕事">仕事</option>
+                <option value="勉強">勉強</option>
+                <option value="健康">健康</option>
+                <option value="__custom__">自由入力</option>
+              </select>
+              <input id="categoryCustom" class="grow hidden" placeholder="自由カテゴリ" />
+              <input id="tags" class="grow" placeholder="タグ（カンマ区切り）" />
+              <button id="createBtn" class="primary">追加</button>
+            </div>
+            <p id="createError" class="error"></p>
+          </section>
+
+          <section class="card">
+            <h2>検索・絞り込み</h2>
+            <div class="row">
+              <input id="q" class="grow" placeholder="キーワード検索" />
+              <select id="status">
+                <option value="all">すべて</option>
+                <option value="active">未完了</option>
+                <option value="completed">完了</option>
+              </select>
+              <select id="sortBy">
+                <option value="created_at">作成日</option>
+                <option value="due_date">期限日</option>
+                <option value="priority">優先度</option>
+              </select>
+              <select id="order">
+                <option value="desc">降順</option>
+                <option value="asc">昇順</option>
+              </select>
+              <select id="pageSize">
+                <option value="5">5件</option>
+                <option value="10" selected>10件</option>
+                <option value="20">20件</option>
+              </select>
+              <button id="searchBtn">適用</button>
+            </div>
+          </section>
+
+          <section class="card">
+            <table>
+              <thead>
+                <tr>
+                  <th>状態</th>
+                  <th>タイトル</th>
+                  <th>期限</th>
+                  <th>優先度</th>
+                  <th>タグ</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="todoBody"></tbody>
+            </table>
+            <div class="row" style="margin-top: 12px; justify-content: space-between;">
+              <button id="prevBtn">前へ</button>
+              <span id="pageInfo" class="muted"></span>
+              <button id="nextBtn">次へ</button>
+            </div>
+          </section>
+
+          <section id="weeklyReviewCard" class="card review-card">
+            <div class="review-header">
+              <h2 style="margin: 0;">週次振り返り（直近7日）</h2>
+              <button id="toggleWeeklyReviewBtn" type="button">折りたたむ</button>
+            </div>
+            <p id="weeklyReviewPeriod" class="muted" style="margin: 8px 0 0;">-</p>
+            <div id="weeklyReviewBody">
+              <div class="review-grid">
+                <div class="review-box"><p class="review-label">完了タスク</p><p id="reviewCompletedTasks" class="review-value">0</p></div>
+                <div class="review-box"><p class="review-label">作成タスク</p><p id="reviewCreatedTasks" class="review-value">0</p></div>
+                <div class="review-box"><p class="review-label">達成ミッション</p><p id="reviewMissionCount" class="review-value">0</p></div>
+                <div class="review-box"><p class="review-label">獲得XP</p><p id="reviewXp" class="review-value">0</p></div>
+                <div class="review-box"><p class="review-label">継続日数</p><p id="reviewActiveDays" class="review-value">0</p></div>
+                <div class="review-box"><p class="review-label">最多タグ</p><p id="reviewTopTag" class="review-value">-</p></div>
+              </div>
+              <div class="review-comment">
+                <p class="review-label">キャラクターの振り返りコメント</p>
+                <p id="reviewCharacterComment" style="margin: 4px 0 0;">-</p>
+              </div>
+            </div>
+          </section>
+        </main>
+
+        <aside class="side">
+          <section id="progressCard" class="card">
+            <h2>進捗ダッシュボード</h2>
+            <p style="margin:0;">Lv <strong id="levelValue">1</strong> / XP <strong id="xpValue">0</strong></p>
+            <div class="progress"><span id="xpBar" style="width:0%"></span></div>
+            <p id="nextXpInfo" class="muted">次のレベルまで 100 XP</p>
+            <ul class="status-list">
+              <li id="loginStreakInfo">連続ログイン: 0日</li>
+              <li id="streakInfo">連続達成日数: 0日</li>
+            </ul>
+            <p id="rewardFlash" class="muted"></p>
+
+            <div id="badgeArea">
+              <p id="badgeSummary" class="muted" style="margin-bottom:6px;">バッジ 0/0</p>
+              <div id="badgeList" class="badge-grid"></div>
+            </div>
+            <div style="margin-top: 12px;">
+              <p class="muted" style="margin-bottom:6px;">達成カレンダー（今月）</p>
+              <div id="achievementCalendar" class="calendar-grid"></div>
+            </div>
+          </section>
+
+        </aside>
+      </div>
+    </section>
+    <div id="toastLayer" class="toast-layer" aria-live="polite"></div>
+
+    <script>
+      const state = {
+        token: localStorage.getItem('token') || '',
+        page: 1,
+        totalPages: 1,
+        dailyMission: null,
+        missionCandidatesExpanded: true,
+        weeklyReviewCollapsed: false,
+        pendingMainMissionId: null,
+        pendingSubMissionIds: [],
+      };
+
+      const DIFFICULTY_LABEL = {
+        easy: 'easy',
+        normal: 'normal',
+        challenge: 'challenge',
+      };
+
+      const CHARACTER_DIALOGUE = {
+        initial: {
+          idle: 'こんにちは、先輩。西宮京子です。今日も一歩ずつ頑張りましょう…！',
+          completed: 'ありがとうございます！先輩の進め方、私も見習いたいです。',
+          badge: 'バッジ獲得すごいです…！私も少し自信がついてきました。',
+          mission: 'メイン目標から丁寧にいきましょう。私もついていきます！',
+          growth_event: '先輩のおかげで、苦手にも挑戦してみたくなりました。'
+        },
+        middle: {
+          idle: '先輩、お疲れさまです！今日も一緒に進めましょう！',
+          completed: 'ナイス完了です！私も挑戦する勇気が湧いてきました！',
+          badge: 'バッジ、かっこいいです！次も狙っていきましょう♪',
+          mission: 'メインをしっかり、余裕があればサブも行きましょう！',
+          growth_event: 'ちょっとずつだけど、私も変われてる気がします！'
+        },
+        late: {
+          idle: '先輩のペース、ほんとに参考になります。一緒に今日も進めたいです！',
+          completed: '完了報告うれしいです！私ももっと頼れる後輩になりますね。',
+          badge: 'またバッジ！積み重ねの強さ、実感しますね。',
+          mission: 'メイン達成を軸に、サブで伸ばしていきましょう！',
+          growth_event: '苦手だったことにも向き合えるようになってきました。'
+        },
+        partner: {
+          idle: '京子、準備OKです。今日は相棒としてしっかり支えます！',
+          completed: 'さすがです！この連携、かなり強いですね。',
+          badge: 'コレクションが育ってきましたね。次の目標も一緒に取りにいきましょう！',
+          mission: 'メインを決めて、サブで加速。最高の流れです！',
+          growth_event: '先輩と一緒なら、どんな挑戦も楽しめます！'
+        },
+      };
+
+      const CHARACTER_MOODS = {
+        normal: {
+          label: '通常',
+          image: '/static/character/mood-normal.png',
+          fallbackImage: '/static/character/mood-normal.svg',
+          messages: {
+            idle: '準備OK！今日はどこから進める？',
+            completed: 'ナイス完了！この調子で次もいこう✨'
+          },
+          talks: [
+            { text: '大丈夫、ひとつずつ進めよう。', mood: 'normal' },
+            { text: 'まずは一番軽いタスクから始めるのがおすすめだよ。', mood: 'normal' },
+            { text: '春の空気って気持ちいいね。短い散歩で気分転換してから再開しよう。', mood: 'normal' },
+            { text: '今日やることを3つまでに絞ると、ぐっと進めやすいよ。', mood: 'normal' },
+            { text: '焦らなくて大丈夫。完了1つでちゃんと前進だよ。', mood: 'normal' }
+          ]
+        },
+        happy: {
+          label: 'うれしい',
+          image: '/static/character/mood-happy.png',
+          fallbackImage: '/static/character/mood-happy.svg',
+          messages: {
+            completed: 'すごい！達成できたね。ちゃんと前進してるよ♪',
+            badge: '実績ゲット！頑張りが形になってるよ🏅'
+          },
+          talks: [
+            { text: 'やったね！この達成感、最高だよ。', mood: 'happy' },
+            { text: '今日のあなた、すごくいいリズムだよ♪', mood: 'happy' },
+            { text: '桜の季節みたいに、少しずつ成果が咲いてきたね。', mood: 'happy' },
+            { text: 'ひとつ終えるたびに、気持ちまで軽くなるね！', mood: 'happy' },
+            { text: 'その調子！今の一歩が未来の余裕になるよ。', mood: 'happy' }
+          ]
+        },
+        encouraging: {
+          label: 'あと少し',
+          image: '/static/character/mood-encouraging.png',
+          fallbackImage: '/static/character/mood-encouraging.svg',
+          messages: {
+            idle: 'あと1歩！次のタスクを終わらせれば今日の目標達成だよ。'
+          },
+          talks: [
+            { text: 'あと一歩だよ、いっしょに押し切ろう！', mood: 'encouraging' },
+            { text: '次の1タスクで今日がもっと気持ちよく終わるよ。', mood: 'encouraging' },
+            { text: '新生活の時期は疲れやすいから、短い集中を重ねよう。', mood: 'encouraging' },
+            { text: 'あと5分だけ集中してみよう。きっと進むよ。', mood: 'encouraging' },
+            { text: '完璧じゃなくてOK。まずは完了を目指そう。', mood: 'encouraging' }
+          ]
+        },
+        tired: {
+          label: 'ゆっくり再開',
+          image: '/static/character/mood-tired.png',
+          fallbackImage: '/static/character/mood-tired.svg',
+          messages: {
+            idle: 'おかえりなさい。無理せず、まずは小さな1タスクから始めよう。'
+          },
+          talks: [
+            { text: '今日は軽めでOK。再開できたことが一番えらい！', mood: 'tired' },
+            { text: '深呼吸して、1つだけ終わらせよう。', mood: 'tired' },
+            { text: '花粉がつらい日は、無理せず室内でできるタスクを選ぼう。', mood: 'tired' },
+            { text: '今日は“やる気待ち”しなくていいよ。小さく着手しよう。', mood: 'tired' },
+            { text: '休みながらで大丈夫。ペースを戻せばちゃんと進める。', mood: 'tired' }
+          ]
+        },
+        excited: {
+          label: '最高！',
+          image: '/static/character/mood-excited.png',
+          fallbackImage: '/static/character/mood-excited.svg',
+          messages: {
+            levelup: 'レベルアップおめでとう！積み重ねが力になってるよ🎉'
+          },
+          talks: [
+            { text: '今の勢いすごい！もう1ついけるよ！', mood: 'excited' },
+            { text: 'レベルアップ、ほんとにおめでとう🎉', mood: 'excited' },
+            { text: 'ゴールデンウィーク前に、やることを軽く整理しておこう。', mood: 'excited' },
+            { text: '今日は当たり日！この波に乗っていこう✨', mood: 'excited' },
+            { text: '勢いがある今、優先タスクを片付けるチャンスだよ。', mood: 'excited' }
+          ]
+        }
+      };
+
+      let characterMood = 'normal';
+      let lastTodos = [];
+      let lastEventType = 'idle';
+      let talkIndex = 0;
+      const CHARACTER_TALK_POOL = Object.entries(CHARACTER_MOODS).flatMap(([mood, cfg]) =>
+        (cfg.talks || []).map((t) => ({ ...t, mood: t.mood || mood }))
+      );
+
+      const loginCard = document.getElementById('loginCard');
+      const appSection = document.getElementById('appSection');
+      const heroCard = document.getElementById('heroCard');
+      const loginError = document.getElementById('loginError');
+      const createError = document.getElementById('createError');
+      const todoBody = document.getElementById('todoBody');
+      const pageInfo = document.getElementById('pageInfo');
+      const me = document.getElementById('me');
+      const titleCalendar = document.getElementById('titleCalendar');
+      const categorySelect = document.getElementById('categorySelect');
+      const categoryCustom = document.getElementById('categoryCustom');
+
+      const heroStateBadge = document.getElementById('heroStateBadge');
+      const heroMainMessage = document.getElementById('heroMainMessage');
+      const heroGoal = document.getElementById('heroGoal');
+      const heroNextAction = document.getElementById('heroNextAction');
+      const characterStage = document.getElementById('characterStage');
+      const progressCard = document.getElementById('progressCard');
+      const badgeArea = document.getElementById('badgeArea');
+      const levelValue = document.getElementById('levelValue');
+      const xpValue = document.getElementById('xpValue');
+      const xpBar = document.getElementById('xpBar');
+      const nextXpInfo = document.getElementById('nextXpInfo');
+      const loginStreakInfo = document.getElementById('loginStreakInfo');
+      const streakInfo = document.getElementById('streakInfo');
+      const rewardFlash = document.getElementById('rewardFlash');
+      const badgeSummary = document.getElementById('badgeSummary');
+      const badgeList = document.getElementById('badgeList');
+      const achievementCalendar = document.getElementById('achievementCalendar');
+      const characterImage = document.getElementById('characterImage');
+      const toastLayer = document.getElementById('toastLayer');
+      const missionGuide = document.getElementById('missionGuide');
+      const difficultyButtons = document.getElementById('difficultyButtons');
+      const toggleCandidatesBtn = document.getElementById('toggleCandidatesBtn');
+      const missionCandidatesWrap = document.getElementById('missionCandidatesWrap');
+      const missionCandidates = document.getElementById('missionCandidates');
+      const selectedMissionPanel = document.getElementById('selectedMissionPanel');
+      const selectedMissionTitle = document.getElementById('selectedMissionTitle');
+      const selectedMissionDifficulty = document.getElementById('selectedMissionDifficulty');
+      const selectedMissionReward = document.getElementById('selectedMissionReward');
+      const selectedMissionStatus = document.getElementById('selectedMissionStatus');
+      const selectedMissionCondition = document.getElementById('selectedMissionCondition');
+      const selectedMissionProgressText = document.getElementById('selectedMissionProgressText');
+      const selectedMissionProgressBar = document.getElementById('selectedMissionProgressBar');
+      const selectedSubMissionSection = document.getElementById('selectedSubMissionSection');
+      const selectedSubMissionList = document.getElementById('selectedSubMissionList');
+      const missionSelectionHint = document.getElementById('missionSelectionHint');
+      const confirmMissionSelectionBtn = document.getElementById('confirmMissionSelectionBtn');
+      const toggleWeeklyReviewBtn = document.getElementById('toggleWeeklyReviewBtn');
+      const weeklyReviewBody = document.getElementById('weeklyReviewBody');
+      const weeklyReviewPeriod = document.getElementById('weeklyReviewPeriod');
+      const reviewCompletedTasks = document.getElementById('reviewCompletedTasks');
+      const reviewCreatedTasks = document.getElementById('reviewCreatedTasks');
+      const reviewMissionCount = document.getElementById('reviewMissionCount');
+      const reviewXp = document.getElementById('reviewXp');
+      const reviewActiveDays = document.getElementById('reviewActiveDays');
+      const reviewTopTag = document.getElementById('reviewTopTag');
+      const reviewCharacterComment = document.getElementById('reviewCharacterComment');
+
+      let characterGrowthStage = 'initial';
+
+      function setTodayToCalendar() {
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, '0');
+        const d = String(now.getDate()).padStart(2, '0');
+        titleCalendar.value = `${y}-${m}-${d}`;
+      }
+
+      function triggerCharacterEffect() {
+        characterStage.classList.remove('celebrate');
+        requestAnimationFrame(() => {
+          characterStage.classList.add('celebrate');
+          setTimeout(() => characterStage.classList.remove('celebrate'), 500);
+        });
+      }
+
+      function flashElement(element, className, duration = 900) {
+        element.classList.remove(className);
+        requestAnimationFrame(() => {
+          element.classList.add(className);
+          setTimeout(() => element.classList.remove(className), duration);
+        });
+      }
+
+      function showToast(message, kind = 'success', duration = 2200) {
+        const toast = document.createElement('div');
+        toast.className = `toast ${kind}`;
+        toast.textContent = message;
+        toastLayer.appendChild(toast);
+        setTimeout(() => {
+          toast.remove();
+        }, duration);
+      }
+
+      function showXpBurst(text) {
+        characterStage.setAttribute('data-xp', text);
+        flashElement(characterStage, 'xp-burst', 950);
+      }
+
+      function chooseCharacterMood({ eventType = 'idle', leveledUp = false, streakDays = 0, inactiveDays = 0, remainingGoals = 0 } = {}) {
+        if (leveledUp || eventType === 'levelup') return 'excited';
+        if (eventType === 'completed' || eventType === 'badge') return 'happy';
+        if (inactiveDays >= 2) return 'tired';
+        if (remainingGoals === 1 || streakDays >= 3) return 'encouraging';
+        return 'normal';
+      }
+
+      function applyCharacterMood(mood) {
+        const safeMood = CHARACTER_MOODS[mood] ? mood : 'normal';
+        const moodConfig = CHARACTER_MOODS[safeMood];
+        characterMood = safeMood;
+        heroCard.dataset.mood = safeMood;
+        heroStateBadge.textContent = moodConfig.label;
+        characterImage.dataset.fallback = moodConfig.fallbackImage || '';
+        characterImage.src = moodConfig.image;
+        return moodConfig;
+      }
+
+      function setCharacterState({ eventType = 'idle', mood = 'normal', extraText = '' } = {}) {
+        const moodConfig = applyCharacterMood(mood);
+        lastEventType = eventType;
+        talkIndex = 0;
+        const stageLines = CHARACTER_DIALOGUE[characterGrowthStage] || CHARACTER_DIALOGUE.initial;
+        const fallbackMessage = CHARACTER_MOODS.normal.messages[eventType] || CHARACTER_MOODS.normal.messages.idle;
+        const baseMessage = stageLines[eventType] || moodConfig.messages[eventType] || moodConfig.messages.idle || fallbackMessage;
+        const message = extraText ? `${baseMessage} ${extraText}` : baseMessage;
+        heroMainMessage.textContent = message;
+      }
+
+      function cycleCharacterTalk() {
+        if (!CHARACTER_TALK_POOL.length) return;
+        const item = CHARACTER_TALK_POOL[talkIndex % CHARACTER_TALK_POOL.length];
+        const text = typeof item === 'string' ? item : item.text;
+        const nextMood = typeof item === 'string' ? characterMood : (item.mood || characterMood);
+        talkIndex += 1;
+        applyCharacterMood(nextMood);
+        heroMainMessage.textContent = text;
+      }
+
+      function missionObjectiveLabel(mission) {
+        const objective = mission?.objective || {};
+        const target = Number(objective.target || 1);
+        if (objective.kind === 'created_today') return `今日のタスク追加 ${target}件`;
+        if (objective.kind === 'completed_today') return `今日のタスク完了 ${target}件`;
+        if (objective.kind === 'high_priority_completed_today') return `優先度「高」完了 ${target}件`;
+        if (objective.kind === 'active_todos_lte') return `未完了タスク ${target}件以下`;
+        return mission?.description || '今日のミッション';
+      }
+
+      function missionProgressInfo(mission, metrics = {}) {
+        const objective = mission?.objective || {};
+        const target = Number(objective.target || 1);
+        if (objective.kind === 'created_today') {
+          const current = Number(metrics.created_today || 0);
+          return { current, target, done: current >= target, text: `${current}/${target}件` };
+        }
+        if (objective.kind === 'completed_today') {
+          const current = Number(metrics.completed_today || 0);
+          return { current, target, done: current >= target, text: `${current}/${target}件` };
+        }
+        if (objective.kind === 'high_priority_completed_today') {
+          const current = Number(metrics.high_priority_completed_today || 0);
+          return { current, target, done: current >= target, text: `${current}/${target}件` };
+        }
+        if (objective.kind === 'active_todos_lte') {
+          const current = Number(metrics.active_todos || 0);
+          const pseudoDone = Math.max(0, target - current + 1);
+          const pseudoTarget = Math.max(target + 1, 1);
+          return { current: pseudoDone, target: pseudoTarget, done: current <= target, text: `現在 ${current}件 / 目標 ${target}件以下` };
+        }
+        return { current: 0, target: 1, done: false, text: '-' };
+      }
+
+      function getMissionCharacterState(data, progress) {
+        if (!data?.selected_main_mission_id) {
+          return { mood: 'normal', message: '今日の目標を選ぼう。今の余力に合った難易度からでOK！' };
+        }
+        const hasStudyMission = [data.selected_main_mission, ...(data.selected_sub_missions || [])]
+          .some((m) => m?.objective?.category === '勉強');
+        if (data.all_completed) {
+          return { mood: 'excited', message: 'メインもサブも全部達成！最高の積み上げだね🎉' };
+        }
+        if (data.main_completed && (data.sub_completed_count || 0) > 0) {
+          return { mood: 'happy', message: 'メイン達成に加えてサブも進んでる！いい調子だよ。' };
+        }
+        if (data.main_completed) {
+          return { mood: 'happy', message: 'メインミッション達成！今日の主目標クリアだね。' };
+        }
+        if ((data.sub_completed_count || 0) > 0) {
+          return { mood: 'encouraging', message: 'サブ達成ナイス！次はメインを仕上げよう。' };
+        }
+        if (hasStudyMission) {
+          return { mood: 'encouraging', message: '勉強カテゴリに挑戦中だね。私も苦手克服、いっしょに頑張る！' };
+        }
+        if (data.completed) {
+          return { mood: 'excited', message: '今日のミッション達成！この調子で次の一歩もいこう✨' };
+        }
+        const ratio = Math.min(1, progress.current / Math.max(progress.target, 1));
+        if (ratio >= 0.8) {
+          return { mood: 'encouraging', message: '達成まであと少し！今日のメイン目標を仕上げよう。' };
+        }
+        return { mood: 'normal', message: '選んだミッションを一歩ずつ進めよう。' };
+      }
+
+      function renderSelectedMission(data) {
+        const selected = data?.selected_main_mission;
+        if (!selected) {
+          selectedMissionPanel.classList.add('hidden');
+          return;
+        }
+        const progress = missionProgressInfo(selected, data.metrics || {});
+        const ratio = Math.max(0, Math.min(100, Math.round((progress.current / Math.max(progress.target, 1)) * 100)));
+        selectedMissionPanel.classList.remove('hidden');
+        selectedMissionPanel.classList.toggle('completed', !!data.completed);
+        selectedMissionTitle.textContent = selected.title;
+        selectedMissionDifficulty.textContent = DIFFICULTY_LABEL[data.difficulty] || data.difficulty;
+        selectedMissionReward.textContent = `+${selected.reward_xp} XP`;
+        selectedMissionStatus.textContent = data.main_completed ? 'メイン達成' : '選択中';
+        selectedMissionCondition.textContent = `達成条件: ${missionObjectiveLabel(selected)}`;
+        selectedMissionProgressText.textContent = `進捗: ${progress.text}`;
+        selectedMissionProgressBar.style.width = `${data.main_completed ? 100 : ratio}%`;
+
+        const subs = data.selected_sub_missions || [];
+        const subProgress = data.sub_progress || {};
+        selectedSubMissionList.innerHTML = '';
+        if (!subs.length) {
+          selectedSubMissionSection.classList.add('hidden');
+          return;
+        }
+        selectedSubMissionSection.classList.remove('hidden');
+        subs.forEach((sub) => {
+          const item = document.createElement('div');
+          const p = missionProgressInfo(sub, data.metrics || {});
+          const status = subProgress[sub.id]?.completed ? '達成済み' : `進捗 ${p.text}`;
+          item.className = `mission-item${subProgress[sub.id]?.completed ? ' completed' : ''}`;
+          item.innerHTML = `
+            <span class="mission-pill sub">任意</span>
+            <span class="mission-item-title">${sub.title}</span>
+            <p class="muted" style="margin: 6px 0 0;">${missionObjectiveLabel(sub)} / 報酬 +${Math.max(5, Math.floor((sub.reward_xp || 0) * 0.4))}XP / ${status}</p>
+          `;
+          selectedSubMissionList.appendChild(item);
+        });
+      }
+
+      function renderDailyMission(data) {
+        state.dailyMission = data;
+        const activeDifficulty = data?.difficulty || 'normal';
+        const hasSelected = !!data?.selected_main_mission_id;
+        const selected = data?.selected_main_mission;
+        const progress = selected ? missionProgressInfo(selected, data.metrics || {}) : { current: 0, target: 1, done: false };
+        const missionCharacter = getMissionCharacterState(data, progress);
+        missionGuide.textContent = missionCharacter.message;
+        if (!hasSelected) {
+          heroNextAction.textContent = 'デイリーミッションを1つ選ぶ';
+        }
+
+        [...difficultyButtons.querySelectorAll('button')].forEach((btn) => {
+          btn.classList.toggle('active', btn.dataset.difficulty === activeDifficulty);
+          btn.textContent = DIFFICULTY_LABEL[btn.dataset.difficulty] || btn.dataset.difficulty;
+          btn.disabled = hasSelected;
+        });
+
+        renderSelectedMission(data);
+        toggleCandidatesBtn.classList.toggle('hidden', !hasSelected);
+        if (hasSelected && !state.missionCandidatesExpanded) {
+          missionCandidatesWrap.classList.add('hidden');
+          toggleCandidatesBtn.textContent = '候補を表示';
+        } else {
+          missionCandidatesWrap.classList.remove('hidden');
+          toggleCandidatesBtn.textContent = '候補を隠す';
+        }
+
+        missionCandidates.innerHTML = '';
+        missionSelectionHint.classList.toggle('hidden', hasSelected);
+        confirmMissionSelectionBtn.classList.toggle('hidden', hasSelected);
+        const candidates = data?.candidates || [];
+        if (!candidates.length) {
+          missionCandidates.innerHTML = '<p class="muted">候補ミッションがありません。</p>';
+          return;
+        }
+        if (!hasSelected) {
+          if (!state.pendingMainMissionId || !candidates.some((c) => c.id === state.pendingMainMissionId)) {
+            state.pendingMainMissionId = null;
+          }
+          state.pendingSubMissionIds = state.pendingSubMissionIds.filter((id) => candidates.some((c) => c.id === id) && id !== state.pendingMainMissionId);
+        }
+        const mainId = hasSelected ? data.selected_main_mission_id : state.pendingMainMissionId;
+        const subIds = hasSelected
+          ? (data.selected_sub_missions || []).map((m) => m.id)
+          : state.pendingSubMissionIds;
+        if (!hasSelected) {
+          confirmMissionSelectionBtn.disabled = !mainId;
+        }
+
+        candidates.forEach((mission) => {
+          const card = document.createElement('div');
+          const isMain = mainId === mission.id;
+          const isSub = subIds.includes(mission.id);
+          const subDone = !!(data.sub_progress || {})[mission.id]?.completed;
+          const mainDone = isMain && !!data.main_completed;
+          card.className = `mission-item${isMain ? ' main' : ''}${isSub ? ' sub' : ''}${mainDone || subDone ? ' completed' : ''}`;
+          const roleLabel = isMain ? '<span class="mission-pill main">メイン</span>' : (isSub ? '<span class="mission-pill sub">サブ(任意)</span>' : '');
+          const status = isMain
+            ? (mainDone ? 'メイン達成' : 'メイン選択中')
+            : (isSub ? (subDone ? 'サブ達成' : 'サブ選択中') : '未選択');
+          card.innerHTML = `
+            ${roleLabel}
+            <div class="mission-item-title">${mission.title}</div>
+            <p class="muted" style="margin: 4px 0 8px;">${missionObjectiveLabel(mission)}</p>
+            <p class="muted" style="margin: 0 0 8px;">報酬: +${mission.reward_xp} XP / 状態: ${status}</p>
+            <div class="row">
+              <button type="button" data-action="pick-main" data-mission-id="${mission.id}" ${hasSelected ? 'disabled' : ''}>メインにする</button>
+              <button type="button" data-action="pick-sub" data-mission-id="${mission.id}" ${hasSelected ? 'disabled' : ''}>サブにする</button>
+            </div>
+          `;
+          missionCandidates.appendChild(card);
+        });
+      }
+
+      async function loadDailyMission() {
+        const data = await api('/api/daily-mission', { method: 'GET' });
+        state.missionCandidatesExpanded = !data?.selected_main_mission_id;
+        state.pendingMainMissionId = null;
+        state.pendingSubMissionIds = [];
+        renderDailyMission(data);
+      }
+
+      function difficultyToMood(difficulty) {
+        if (difficulty === 'easy') return 'tired';
+        if (difficulty === 'challenge') return 'excited';
+        return 'normal';
+      }
+
+      async function api(path, options = {}) {
+        const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+        if (state.token) headers.Authorization = `Bearer ${state.token}`;
+        const res = await fetch(path, { ...options, headers });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || 'APIエラー');
+        return data;
+      }
+
+      function priorityLabel(v) {
+        if (v === 1) return '高';
+        if (v === 2) return '中';
+        return '低';
+      }
+
+      function getFilters() {
+        return {
+          q: document.getElementById('q').value,
+          status: document.getElementById('status').value,
+          sort_by: document.getElementById('sortBy').value,
+          order: document.getElementById('order').value,
+          page: state.page,
+          page_size: Number(document.getElementById('pageSize').value),
+        };
+      }
+
+      function toQuery(obj) {
+        const sp = new URLSearchParams();
+        Object.entries(obj).forEach(([k, v]) => sp.set(k, v));
+        return sp.toString();
+      }
+
+      function updateCurrentGoal(todos) {
+        lastTodos = todos;
+        const active = todos.filter((t) => !t.completed);
+        if (!active.length) {
+          heroGoal.textContent = '今日の目標達成！';
+          heroNextAction.textContent = '明日のために新しいタスクを1つ追加する';
+          return;
+        }
+        const top = active[0];
+        heroGoal.textContent = `「${top.title}」を完了する`;
+        heroNextAction.textContent = '最優先タスクを1つ完了する';
+      }
+
+      async function loadMe() {
+        const data = await api('/api/me', { method: 'GET' });
+        me.textContent = `ログイン中: ${data.username}`;
+      }
+
+      async function loadTodos() {
+        const query = toQuery(getFilters());
+        const data = await api(`/api/todos?${query}`);
+        todoBody.innerHTML = '';
+
+        for (const todo of data.items) {
+          const tr = document.createElement('tr');
+          const tags = (todo.tags || []).map((t) => `<span class="chip">${t}</span>`).join('');
+          tr.innerHTML = `
+            <td>${todo.completed ? '✅' : '⬜'}</td>
+            <td class="${todo.completed ? 'done' : ''}">${todo.title}</td>
+            <td>${todo.due_date || '-'}</td>
+            <td>${priorityLabel(todo.priority)}</td>
+            <td>${tags || '-'}</td>
+            <td>
+              <button data-action="toggle" data-id="${todo.id}">切替</button>
+              <button data-action="edit" data-id="${todo.id}">編集</button>
+              <button data-action="delete" data-id="${todo.id}">削除</button>
+            </td>
+          `;
+          todoBody.appendChild(tr);
+        }
+
+        updateCurrentGoal(data.items || []);
+        state.page = data.pagination.page;
+        state.totalPages = data.pagination.total_pages;
+        pageInfo.textContent = `${data.pagination.page} / ${data.pagination.total_pages} (全${data.pagination.total}件)`;
+      }
+
+      function renderAchievementCalendar(achievementDates) {
+        achievementCalendar.innerHTML = '';
+        const achieved = new Set(achievementDates || []);
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = now.getMonth();
+        const lastDay = new Date(year, month + 1, 0).getDate();
+        for (let day = 1; day <= lastDay; day += 1) {
+          const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+          const cell = document.createElement('div');
+          cell.className = `calendar-cell${achieved.has(dateStr) ? ' filled' : ''}`;
+          cell.textContent = String(day);
+          achievementCalendar.appendChild(cell);
+        }
+      }
+
+      function renderProgress(progress) {
+        levelValue.textContent = progress.level;
+        xpValue.textContent = progress.total_xp;
+        nextXpInfo.textContent = `次のレベルまで ${progress.xp_to_next_level} XP`;
+        loginStreakInfo.textContent = `連続ログイン: ${progress.login_streak_days}日`;
+        streakInfo.textContent = `連続達成日数: ${progress.streak_days}日`;
+        const currentInLevel = progress.total_xp % 100;
+        xpBar.style.width = `${currentInLevel}%`;
+        badgeSummary.textContent = `バッジ ${progress.badge_summary.earned}/${progress.badge_summary.total}`;
+        if (progress.character_state) {
+          characterGrowthStage = progress.character_state.growth_stage || 'initial';
+          heroStateBadge.textContent = `${progress.character_state.name}（${progress.character_state.growth_label}）`;
+        }
+
+        badgeList.innerHTML = '';
+        const badgeItems = progress.all_badges || [];
+        if (!badgeItems.length) {
+          badgeList.innerHTML = '<span class="muted">まだバッジはありません</span>';
+          renderAchievementCalendar(progress.achievement_dates);
+          return;
+        }
+
+        badgeItems.forEach((b) => {
+          const card = document.createElement('div');
+          card.className = 'badge-card';
+          card.style.opacity = b.earned ? '1' : '0.72';
+          card.innerHTML = `
+            <span class="badge-icon">${b.icon || '🏅'}</span><strong>${b.name}</strong>
+            <p class="muted" style="margin:4px 0 0;">${b.description || ''}</p>
+            <p class="muted" style="margin:2px 0 0;">進捗 ${b.current}/${b.target} ${b.earned ? '✅' : ''}</p>
+          `;
+          badgeList.appendChild(card);
+        });
+        renderAchievementCalendar(progress.achievement_dates);
+      }
+
+      async function loadProgress() {
+        const data = await api('/api/progress', { method: 'GET' });
+        renderProgress(data);
+      }
+
+      function renderWeeklyReview(data) {
+        const metrics = data.metrics || {};
+        const period = data.period || {};
+        weeklyReviewPeriod.textContent = `${period.start_date || '-'} 〜 ${period.end_date || '-'}（${period.days || 7}日）`;
+        reviewCompletedTasks.textContent = String(metrics.completed_tasks ?? 0);
+        reviewCreatedTasks.textContent = String(metrics.created_tasks ?? 0);
+        reviewMissionCount.textContent = String(metrics.daily_missions_completed ?? 0);
+        reviewXp.textContent = `${metrics.gained_xp ?? 0} XP`;
+        reviewActiveDays.textContent = `${metrics.active_days ?? 0}日`;
+        reviewTopTag.textContent = metrics.top_tag || 'なし';
+        reviewCharacterComment.textContent = data.character_comment || '今週の振り返りを始めよう。';
+      }
+
+      async function loadWeeklyReview(days = 7) {
+        const data = await api(`/api/review?days=${encodeURIComponent(days)}`, { method: 'GET' });
+        renderWeeklyReview(data);
+      }
+
+      function showApp(isLoggedIn) {
+        loginCard.classList.toggle('hidden', isLoggedIn);
+        appSection.classList.toggle('hidden', !isLoggedIn);
+      }
+
+      async function tryAutoLogin() {
+        if (!state.token) {
+          showApp(false);
+          return;
+        }
+        try {
+          await loadMe();
+          showApp(true);
+          await loadTodos();
+          const progress = await api('/api/progress', { method: 'GET' });
+          renderProgress(progress);
+          await loadDailyMission();
+          await loadWeeklyReview();
+          maybeShowWelcomeBack(progress);
+          setCharacterState({ eventType: 'idle', mood: chooseCharacterMood({ remainingGoals: 2 }) });
+        } catch {
+          state.token = '';
+          localStorage.removeItem('token');
+          showApp(false);
+        }
+      }
+
+      document.getElementById('loginBtn').addEventListener('click', async () => {
+        loginError.textContent = '';
+        try {
+          const username = document.getElementById('username').value;
+          const password = document.getElementById('password').value;
+          const data = await api('/api/login', {
+            method: 'POST',
+            body: JSON.stringify({ username, password }),
+          });
+          state.token = data.token;
+          localStorage.setItem('token', data.token);
+          await loadMe();
+          showApp(true);
+          state.page = 1;
+          await loadTodos();
+          const progress = await api('/api/progress', { method: 'GET' });
+          renderProgress(progress);
+          await loadDailyMission();
+          await loadWeeklyReview();
+          maybeShowWelcomeBack(progress);
+          setCharacterState({ eventType: 'idle', mood: chooseCharacterMood({ remainingGoals: 2 }) });
+        } catch (e) {
+          loginError.textContent = e.message;
+        }
+      });
+
+      document.getElementById('logoutBtn').addEventListener('click', () => {
+        state.token = '';
+        localStorage.removeItem('token');
+        state.missionCandidatesExpanded = true;
+        state.pendingMainMissionId = null;
+        state.pendingSubMissionIds = [];
+        state.weeklyReviewCollapsed = false;
+        missionCandidates.innerHTML = '';
+        missionCandidatesWrap.classList.remove('hidden');
+        selectedMissionPanel.classList.add('hidden');
+        toggleCandidatesBtn.classList.add('hidden');
+        weeklyReviewBody.classList.remove('hidden');
+        toggleWeeklyReviewBtn.textContent = '折りたたむ';
+        weeklyReviewPeriod.textContent = '-';
+        reviewCompletedTasks.textContent = '0';
+        reviewCreatedTasks.textContent = '0';
+        reviewMissionCount.textContent = '0';
+        reviewXp.textContent = '0 XP';
+        reviewActiveDays.textContent = '0日';
+        reviewTopTag.textContent = '-';
+        reviewCharacterComment.textContent = '-';
+        missionGuide.textContent = '難易度を選んで、今日の目標を決めよう。';
+        showApp(false);
+      });
+
+      document.getElementById('createBtn').addEventListener('click', async () => {
+        createError.textContent = '';
+        try {
+          const categoryValue = categorySelect.value === '__custom__' ? categoryCustom.value.trim() : categorySelect.value;
+          const rawTags = document.getElementById('tags').value;
+          const composedTags = [categoryValue, rawTags].filter(Boolean).join(',');
+          const payload = {
+            title: document.getElementById('title').value,
+            due_date: document.getElementById('dueDate').value || null,
+            priority: Number(document.getElementById('priority').value),
+            tags: composedTags,
+          };
+          const created = await api('/api/todos', { method: 'POST', body: JSON.stringify(payload) });
+          document.getElementById('title').value = '';
+          document.getElementById('tags').value = '';
+          categoryCustom.value = '';
+          categoryCustom.classList.add('hidden');
+          categorySelect.value = '';
+          state.page = 1;
+          await loadTodos();
+          await loadProgress();
+          await loadDailyMission();
+          await loadWeeklyReview();
+          let missionCelebrated = false;
+          if (created.daily_mission?.mission_completed) {
+            const m = created.daily_mission;
+            showToast(`デイリーミッション達成！ +${m.reward_xp}XP`, 'level', 2600);
+            if (m.all_completed) {
+              setCharacterState({ eventType: 'levelup', mood: 'excited', extraText: 'メインもサブも全部達成！すごい集中力だね！' });
+            } else if (m.newly_completed_sub_ids?.length) {
+              setCharacterState({ eventType: 'completed', mood: 'happy', extraText: 'サブミッション達成！余力の一歩が効いてるよ。' });
+            } else if (m.main_completed_now) {
+              setCharacterState({ eventType: 'completed', mood: 'happy', extraText: `メイン「${m.main_mission.title}」達成！` });
+            }
+            missionCelebrated = true;
+          }
+          const remaining = lastTodos.filter((t) => !t.completed).length;
+          if (!missionCelebrated) {
+            setCharacterState({ eventType: 'idle', mood: chooseCharacterMood({ remainingGoals: remaining }) });
+          }
+        } catch (e) {
+          createError.textContent = e.message;
+        }
+      });
+
+      document.getElementById('searchBtn').addEventListener('click', async () => {
+        state.page = 1;
+        await loadTodos();
+      });
+
+      categorySelect.addEventListener('change', () => {
+        const custom = categorySelect.value === '__custom__';
+        categoryCustom.classList.toggle('hidden', !custom);
+      });
+
+      difficultyButtons.addEventListener('click', async (e) => {
+        const btn = e.target.closest('button[data-difficulty]');
+        if (!btn || !state.token) return;
+        try {
+          const difficulty = btn.dataset.difficulty;
+          const data = await api('/api/daily-mission/difficulty', {
+            method: 'POST',
+            body: JSON.stringify({ difficulty }),
+          });
+          state.missionCandidatesExpanded = true;
+          state.pendingMainMissionId = null;
+          state.pendingSubMissionIds = [];
+          renderDailyMission(data);
+          setCharacterState({
+            eventType: 'idle',
+            mood: difficultyToMood(difficulty),
+            extraText: data.difficulty_message || '今日の目標を選んでみよう。',
+          });
+        } catch (err) {
+          showToast(err.message, 'badge', 2200);
+        }
+      });
+
+      missionCandidates.addEventListener('click', async (e) => {
+        const btn = e.target.closest('button[data-action]');
+        if (!btn || !state.token) return;
+        const missionId = btn.dataset.missionId;
+        if (btn.dataset.action === 'pick-main') {
+          state.pendingMainMissionId = missionId;
+          state.pendingSubMissionIds = state.pendingSubMissionIds.filter((id) => id !== missionId);
+          renderDailyMission(state.dailyMission);
+          return;
+        }
+        if (btn.dataset.action === 'pick-sub') {
+          if (state.pendingMainMissionId === missionId) {
+            showToast('メインにしたミッションはサブにできません', 'badge', 1800);
+            return;
+          }
+          const exists = state.pendingSubMissionIds.includes(missionId);
+          if (exists) {
+            state.pendingSubMissionIds = state.pendingSubMissionIds.filter((id) => id !== missionId);
+          } else {
+            if (state.pendingSubMissionIds.length >= 2) {
+              showToast('サブミッションは最大2つまでです', 'badge', 1800);
+              return;
+            }
+            state.pendingSubMissionIds.push(missionId);
+          }
+          renderDailyMission(state.dailyMission);
+        }
+      });
+
+      confirmMissionSelectionBtn.addEventListener('click', async () => {
+        if (!state.pendingMainMissionId || !state.token) {
+          showToast('メインミッションを1つ選んでください', 'badge', 1800);
+          return;
+        }
+        try {
+          const data = await api('/api/daily-mission/select', {
+            method: 'POST',
+            body: JSON.stringify({
+              main_mission_id: state.pendingMainMissionId,
+              sub_mission_ids: state.pendingSubMissionIds,
+            }),
+          });
+          state.missionCandidatesExpanded = false;
+          state.pendingMainMissionId = null;
+          state.pendingSubMissionIds = [];
+          renderDailyMission(data);
+          showToast('今日のミッション構成を保存したよ！', 'success', 1800);
+          setCharacterState({
+            eventType: 'idle',
+            mood: chooseCharacterMood({ remainingGoals: lastTodos.filter((t) => !t.completed).length }),
+            extraText: `メインは「${data.selected_main_mission.title}」でいこう！`,
+          });
+        } catch (err) {
+          showToast(err.message, 'badge', 2200);
+        }
+      });
+
+      toggleCandidatesBtn.addEventListener('click', () => {
+        state.missionCandidatesExpanded = !state.missionCandidatesExpanded;
+        if (state.dailyMission) renderDailyMission(state.dailyMission);
+      });
+
+      toggleWeeklyReviewBtn.addEventListener('click', () => {
+        state.weeklyReviewCollapsed = !state.weeklyReviewCollapsed;
+        weeklyReviewBody.classList.toggle('hidden', state.weeklyReviewCollapsed);
+        toggleWeeklyReviewBtn.textContent = state.weeklyReviewCollapsed ? '開く' : '折りたたむ';
+      });
+
+      document.getElementById('prevBtn').addEventListener('click', async () => {
+        if (state.page <= 1) return;
+        state.page -= 1;
+        await loadTodos();
+      });
+
+      document.getElementById('nextBtn').addEventListener('click', async () => {
+        if (state.page >= state.totalPages) return;
+        state.page += 1;
+        await loadTodos();
+      });
+
+      todoBody.addEventListener('click', async (e) => {
+        const btn = e.target.closest('button');
+        if (!btn) return;
+
+        const id = btn.dataset.id;
+        const action = btn.dataset.action;
+
+        if (action === 'toggle') {
+          const result = await api(`/api/todos/${id}/toggle`, { method: 'PATCH' });
+          if (result.reward) {
+            const r = result.reward;
+            rewardFlash.textContent = `+${r.gained_xp} XP（倍率 x${r.multiplier.toFixed(1)} / 連続${r.streak_days}日）`;
+            showXpBurst(`+${r.gained_xp}XP`);
+            showToast(`タスク完了！ +${r.gained_xp}XP`, 'success');
+            if (r.streak_days >= 2) {
+              showToast(`${r.streak_days}日連続達成！`, 'success', 1800);
+            }
+            if (r.growth_events?.length) {
+              const ev = r.growth_events[0];
+              showToast(`成長イベント: ${ev.text}`, 'badge', 2800);
+              setCharacterState({ eventType: 'growth_event', mood: 'happy', extraText: ev.text });
+            }
+            if (r.new_badges?.length) {
+              setCharacterState({
+                eventType: 'badge',
+                mood: chooseCharacterMood({ eventType: 'badge' }),
+                extraText: `獲得: ${r.new_badges.map((b) => b.name).join('、')}`,
+              });
+              showToast(`新バッジ獲得: ${r.new_badges.map((b) => b.name).join('、')}`, 'badge', 2600);
+              flashElement(badgeArea, 'flash-highlight', 1200);
+            } else if (r.leveled_up) {
+              setCharacterState({
+                eventType: 'levelup',
+                mood: chooseCharacterMood({ eventType: 'levelup', leveledUp: true }),
+                extraText: `現在Lv${r.level}`,
+              });
+              showToast(`Lvアップ！ Lv${r.level}`, 'level', 2600);
+              flashElement(levelValue, 'level-highlight', 1000);
+              flashElement(progressCard, 'flash-highlight', 1200);
+            } else {
+              setCharacterState({
+                eventType: 'completed',
+                mood: chooseCharacterMood({ eventType: 'completed', streakDays: r.streak_days }),
+              });
+            }
+            triggerCharacterEffect();
+          }
+          if (result.daily_mission?.mission_completed) {
+            const m = result.daily_mission;
+            showToast(`デイリーミッション達成！ +${m.reward_xp}XP`, 'level', 2600);
+            if (m.all_completed) {
+              setCharacterState({ eventType: 'levelup', mood: 'excited', extraText: 'メイン・サブすべて達成！今日は満点だね🎉' });
+            } else if (m.newly_completed_sub_ids?.length) {
+              setCharacterState({ eventType: 'completed', mood: 'happy', extraText: 'サブミッションのボーナス達成！' });
+            } else if (m.main_completed_now) {
+              setCharacterState({ eventType: 'completed', mood: 'happy', extraText: `メイン「${m.main_mission.title}」達成！` });
+            }
+            flashElement(progressCard, 'flash-highlight', 1200);
+          }
+          await loadTodos();
+          await loadProgress();
+          await loadDailyMission();
+          await loadWeeklyReview();
+          return;
+        }
+
+        if (action === 'delete') {
+          if (!confirm('削除しますか？')) return;
+          await api(`/api/todos/${id}`, { method: 'DELETE' });
+          await loadTodos();
+          await loadProgress();
+          await loadWeeklyReview();
+          return;
+        }
+
+        if (action === 'edit') {
+          const title = prompt('新しいタイトルを入力してください');
+          if (title === null) return;
+          await api(`/api/todos/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ title }),
+          });
+          await loadTodos();
+          await loadProgress();
+          await loadWeeklyReview();
+        }
+      });
+
+      characterImage.addEventListener('error', () => {
+        const fallback = characterImage.dataset.fallback;
+        if (fallback && !characterImage.src.endsWith(fallback)) {
+          characterImage.src = fallback;
+          return;
+        }
+        setCharacterState({ eventType: 'idle', mood: 'normal', extraText: '画像が見つからないみたい…設定を確認してね。' });
+      });
+      characterImage.addEventListener('click', cycleCharacterTalk);
+
+      function maybeShowWelcomeBack(progress) {
+        const today = new Date().toISOString().slice(0, 10);
+        const lastSeen = localStorage.getItem('last_seen_date');
+        localStorage.setItem('last_seen_date', today);
+        if (!lastSeen) return;
+        const diff = Math.floor((new Date(today) - new Date(lastSeen)) / (1000 * 60 * 60 * 24));
+        if (diff >= 2) {
+          showToast('おかえりなさい！また一緒に少しずつ進めよう🌷', 'success', 3000);
+          setCharacterState({
+            eventType: 'idle',
+            mood: chooseCharacterMood({ inactiveDays: diff }),
+            extraText: '再開できたのがすごいよ。今日は小さく1歩進もう♪',
+          });
+        } else if (progress.login_streak_days >= 2) {
+          showToast(`${progress.login_streak_days}日連続ログイン中！`, 'success', 1800);
+        }
+      }
+
+      setTodayToCalendar();
+      setCharacterState({ eventType: 'idle', mood: 'normal' });
+      tryAutoLogin();
+    </script>
+  </body>
+</html>

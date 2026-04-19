@@ -420,6 +420,9 @@ def _mission_row_to_payload(row: sqlite3.Row, metrics: Dict[str, int]) -> Dict[s
     candidates = json.loads(row["candidates_json"] or "[]")
     legacy_selected = json.loads(row["selected_mission_json"]) if row["selected_mission_json"] else None
     selected_main = json.loads(row["main_mission_json"]) if row["main_mission_json"] else legacy_selected
+    selected_main_id = row["main_mission_id"] or row["selected_mission_id"]
+    if selected_main is None and selected_main_id:
+        selected_main = next((c for c in candidates if c.get("id") == selected_main_id), None)
     selected_subs = json.loads(row["sub_missions_json"] or "[]")
     sub_progress = json.loads(row["sub_progress_json"] or "{}")
     main_completed = bool(row["main_completed"] if row["main_mission_id"] is not None else row["completed"])
@@ -428,7 +431,7 @@ def _mission_row_to_payload(row: sqlite3.Row, metrics: Dict[str, int]) -> Dict[s
         "date": row["mission_date"],
         "difficulty": row["difficulty"],
         "candidates": candidates,
-        "selected_main_mission_id": row["main_mission_id"] or row["selected_mission_id"],
+        "selected_main_mission_id": selected_main_id,
         "selected_main_mission": selected_main,
         "selected_sub_missions": selected_subs,
         "main_completed": main_completed,
@@ -440,7 +443,7 @@ def _mission_row_to_payload(row: sqlite3.Row, metrics: Dict[str, int]) -> Dict[s
         "all_completed": bool(main_completed and completed_sub_count == len(selected_subs)),
         "reward_xp": int(row["main_reward_xp"] or row["reward_xp"] or 0) + int(row["sub_total_reward_xp"] or 0),
         # backward compatibility fields
-        "selected_mission_id": row["main_mission_id"] or row["selected_mission_id"],
+        "selected_mission_id": selected_main_id,
         "selected_mission": selected_main,
         "completed": bool(main_completed and completed_sub_count == len(selected_subs)),
         "metrics": metrics,
@@ -448,6 +451,8 @@ def _mission_row_to_payload(row: sqlite3.Row, metrics: Dict[str, int]) -> Dict[s
 
 
 def get_daily_mission_state(user_id: int) -> Dict[str, object]:
+    # UI表示時にも判定を同期して、達成済みフラグの取りこぼしを防ぐ
+    evaluate_daily_mission(user_id)
     mission_date = _today_str()
     with get_conn() as conn:
         row = _ensure_daily_mission(conn, user_id, mission_date)
